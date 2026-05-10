@@ -3,8 +3,8 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroChatMock } from "@/components/hero-chat-mock";
 import {
-  Sparkles, Wand2, Layers, Zap, Code2, Palette, Globe, MessageSquareHeart,
-  Database, ShieldCheck, Rocket, ArrowRight, Star, Heart, Check,
+  Sparkles, Wand2, Zap, Code2, Palette, Globe, MessageSquareHeart,
+  Database, ShieldCheck, Rocket, ArrowRight, Check,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -25,12 +25,10 @@ function Landing() {
       <SiteHeader />
       <main className="flex-1">
         <Hero />
-        <LogoMarquee />
         <Features />
         <HowItWorks />
         <ShowcasePreview />
         <Comparison />
-        <Testimonials />
         <PricingTeaser />
         <FinalCTA />
       </main>
@@ -83,21 +81,9 @@ function Hero() {
             </Link>
           </div>
 
-          <div className="flex items-center gap-4 pt-4">
-            <div className="flex -space-x-2">
-              {["bg-peach", "bg-mint", "bg-sky", "bg-lavender", "bg-butter"].map((c) => (
-                <div key={c} className={`size-8 rounded-full ${c} border-2 border-background`} />
-              ))}
-            </div>
-            <div className="text-sm">
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="size-3.5 fill-primary text-primary" />
-                ))}
-                <span className="font-semibold ml-1">4.9</span>
-              </div>
-              <p className="text-xs text-muted-foreground">Loved by 240,000+ makers</p>
-            </div>
+          <div className="flex items-center gap-3 pt-4 text-sm text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-mint animate-pulse" />
+            Live streaming previews — see your site appear as it's typed.
           </div>
         </div>
 
@@ -107,25 +93,6 @@ function Hero() {
   );
 }
 
-function LogoMarquee() {
-  const logos = ["Acme", "Lumen", "Northwind", "Globex", "Initech", "Pied Piper", "Soylent", "Hooli", "Massive Dynamic", "Wayne Ent."];
-  return (
-    <section className="border-y border-border/60 bg-card/40 py-8 overflow-hidden">
-      <p className="text-center text-xs uppercase tracking-widest text-muted-foreground mb-6">
-        Teams shipping with Breezy
-      </p>
-      <div className="relative">
-        <div className="flex gap-12 animate-marquee whitespace-nowrap">
-          {[...logos, ...logos].map((l, i) => (
-            <span key={i} className="font-display text-2xl font-semibold text-foreground/40 hover:text-foreground transition">
-              {l}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 const FEATURES = [
   { icon: Wand2, title: "Conversational builder", desc: "Type a thought, see it become real UI in seconds. No setup, no boilerplate.", tint: "bg-gradient-warm" },
@@ -295,35 +262,6 @@ function Comparison() {
   );
 }
 
-function Testimonials() {
-  const quotes = [
-    { q: "I shipped a full SaaS in a weekend. My designer cried (happy tears).", a: "Maya R.", role: "Founder, Lumen" },
-    { q: "Breezy turned my chaotic ideas into something my team could actually use on Monday.", a: "Diego P.", role: "PM, Globex" },
-    { q: "It's the first AI tool that doesn't make my apps look like 2014.", a: "Sasha K.", role: "Indie maker" },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-5 py-24">
-      <div className="grid md:grid-cols-3 gap-5">
-        {quotes.map((t, i) => (
-          <div
-            key={i}
-            className="rounded-3xl bg-card border border-border p-7 shadow-soft hover:shadow-card transition-all relative"
-          >
-            <Heart className="absolute top-6 right-6 size-5 text-rose fill-rose/30" />
-            <p className="font-display text-lg leading-snug mb-6">"{t.q}"</p>
-            <div className="flex items-center gap-3">
-              <div className={`size-10 rounded-full ${["bg-peach", "bg-mint", "bg-lavender"][i]}`} />
-              <div>
-                <p className="text-sm font-semibold">{t.a}</p>
-                <p className="text-xs text-muted-foreground">{t.role}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function PricingTeaser() {
   return (

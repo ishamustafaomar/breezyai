@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Github, Twitter } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export function SiteFooter() {
   return (
@@ -15,14 +15,6 @@ export function SiteFooter() {
           <p className="mt-4 max-w-sm text-sm text-muted-foreground">
             The friendliest way to vibe-code beautiful apps. Speak it, see it, ship it.
           </p>
-          <div className="mt-5 flex gap-2">
-            <a href="#" className="size-9 rounded-full grid place-items-center bg-card border border-border hover:bg-muted transition-colors">
-              <Twitter className="size-4" />
-            </a>
-            <a href="#" className="size-9 rounded-full grid place-items-center bg-card border border-border hover:bg-muted transition-colors">
-              <Github className="size-4" />
-            </a>
-          </div>
         </div>
 
         <div>
@@ -35,20 +27,10 @@ export function SiteFooter() {
           </ul>
         </div>
 
-        <div>
-          <p className="text-sm font-semibold mb-3">Company</p>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li><a href="#" className="hover:text-foreground">About</a></li>
-            <li><a href="#" className="hover:text-foreground">Blog</a></li>
-            <li><a href="#" className="hover:text-foreground">Careers</a></li>
-            <li><a href="#" className="hover:text-foreground">Contact</a></li>
-          </ul>
-        </div>
       </div>
       <div className="border-t border-border/60">
-        <div className="mx-auto max-w-7xl px-5 py-6 flex flex-col sm:flex-row gap-3 items-center justify-between text-xs text-muted-foreground">
-          <p>© 2026 Breezy Labs. Made with sunshine.</p>
-          <p>Privacy · Terms · Cookies</p>
+        <div className="mx-auto max-w-7xl px-5 py-6 text-xs text-muted-foreground text-center">
+          © 2026 Breezy. Made with sunshine.
         </div>
       </div>
     </footer>
