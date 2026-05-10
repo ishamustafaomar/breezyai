@@ -65,15 +65,17 @@ const IDEAS = [
   "A SaaS pricing page",
 ];
 
-const PHASES = [
-  "Sketching the layout",
-  "Choosing a color palette",
-  "Writing the copy",
-  "Designing the hero",
-  "Wiring up sections",
-  "Polishing the details",
-  "Finalizing markup",
+const PHASES: { id: string; label: string; match?: RegExp }[] = [
+  { id: "think", label: "Thinking through the design" },
+  { id: "scaffold", label: "Scaffolding the document", match: /<body[\s>]/i },
+  { id: "theme", label: "Tuning the color palette", match: /tailwind\.config\s*=/i },
+  { id: "hero", label: "Designing the hero", match: /<(header|nav)[\s>]/i },
+  { id: "sections", label: "Building feature sections", match: /<section[\s>]/i },
+  { id: "polish", label: "Polishing details & motion", match: /testimonial|pricing|faq|cta/i },
+  { id: "finalize", label: "Finalizing markup", match: /<\/footer>/i },
+  { id: "verify", label: "Verifying completion", match: /<\/html>/i },
 ];
+const PHASE_LABELS = PHASES.map((p) => p.label);
 
 const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
 
@@ -87,6 +89,30 @@ function inspectGeneratedHtml(html: string) {
   const hasDocumentEnd = lower.endsWith("</html>");
   const hasBody = lower.includes("<body") && lower.includes("</body>");
   return { cleaned, complete: hasDocumentStart && hasDocumentEnd && hasBody };
+}
+
+// Build a previewable doc from a partial stream by closing open tags so the
+// iframe can render it live as it generates.
+function previewableHtml(partial: string): string {
+  const stripped = partial.replace(COMPLETION_MARKER_RE, "").trim();
+  if (!stripped) return "";
+  const cleaned = stripped.replace(/^```(?:html)?\s*/i, "");
+  const lower = cleaned.toLowerCase();
+  if (!lower.includes("<body")) return "";
+  if (lower.includes("</html>")) return cleaned;
+  const hasBodyClose = lower.includes("</body>");
+  return cleaned + (hasBodyClose ? "" : "\n</body>") + "\n</html>";
+}
+
+// Detect the highest-progress phase reached given the partial html.
+function detectPhase(html: string): number {
+  let idx = 0;
+  for (let i = 0; i < PHASES.length; i++) {
+    const p = PHASES[i];
+    if (!p.match) continue;
+    if (p.match.test(html)) idx = i;
+  }
+  return idx;
 }
 
 type Version = { id: string; html: string; prompt: string; createdAt: number };
@@ -176,9 +202,9 @@ function BuilderApp() {
     let idx = 0;
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
     phaseTimerRef.current = setInterval(() => {
-      idx = Math.min(idx + 1, PHASES.length - 1);
-      patchBuild({ phase: PHASES[idx] });
-    }, 2800);
+      idx = Math.min(idx + 1, 1); // gently nudge to "scaffolding" while waiting on first tokens
+      patchBuild({ phase: PHASE_LABELS[idx] });
+    }, 1800);
   };
   const stopPhaseTicker = () => {
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
@@ -228,15 +254,33 @@ function BuilderApp() {
       const decoder = new TextDecoder();
       let html = "";
       const TARGET = 22000;
-      patchBuild({ phase: "Generating the site" });
+      let lastPreviewLen = 0;
+      patchBuild({ phase: PHASE_LABELS[1] });
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
-        const pct = Math.min(96, Math.round((html.length / TARGET) * 96));
-        patchBuild({ progress: pct });
+
+        // Drive phase from actual content, not a timer
+        const phaseIdx = detectPhase(html);
+        const phaseLabel = PHASE_LABELS[phaseIdx];
+        const lenPct = Math.round((html.length / TARGET) * 96);
+        const phasePct = Math.round(((phaseIdx + 1) / PHASES.length) * 92);
+        const pct = Math.min(96, Math.max(lenPct, phasePct));
+        patchBuild({ progress: pct, phase: phaseLabel });
+
+        // Live preview: as soon as we have a renderable body, push it.
+        // Throttle to roughly every 600 chars to avoid iframe thrash.
+        if (html.length - lastPreviewLen > 600) {
+          const live = previewableHtml(html);
+          if (live) {
+            setGeneratedHtml(live);
+            lastPreviewLen = html.length;
+          }
+        }
       }
       html += decoder.decode();
+      stopPhaseTicker();
       patchBuild({ phase: "Verifying completion", progress: 98 });
       const marker = html.match(COMPLETION_MARKER_RE);
       const status = marker?.[1] ?? "missing-status";
@@ -244,9 +288,11 @@ function BuilderApp() {
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
+        // Roll back to base so we don't leave a half-rendered preview.
+        setGeneratedHtml(baseHtml);
         const error =
           "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
-        toast.error("Build was incomplete — not marked finished");
+        toast.error("Build was incomplete — kept the previous version");
         patchBuild({ done: true, error, progress: 98, phase: "Incomplete" });
         return null;
       }
@@ -283,7 +329,7 @@ function BuilderApp() {
     const buildMsg: Msg = {
       role: "assistant",
       content: "",
-      build: { phase: PHASES[0], progress: 3, done: false },
+      build: { phase: PHASE_LABELS[0], progress: 3, done: false },
     };
     const next = [...messages, userMsg];
     setMessages([...next, buildMsg]);
@@ -755,10 +801,11 @@ function BuildCard({ build }: { build: BuildStatus }) {
       {/* Phase list */}
       <ul className="space-y-1.5 pt-1">
         {steps.map((s, i) => {
+          const label = s.label;
           const done = build.done ? !build.error : i < activeIdx;
           const active = !build.done && i === activeIdx;
           return (
-            <li key={s} className="flex items-center gap-2 text-xs">
+            <li key={s.id} className="flex items-center gap-2 text-xs">
               <span
                 className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
               >
@@ -779,7 +826,7 @@ function BuildCard({ build }: { build: BuildStatus }) {
                       : "text-muted-foreground"
                 }
               >
-                {active ? `${s}…` : s}
+                {active ? `${label}…` : label}
               </span>
             </li>
           );
