@@ -55,7 +55,7 @@ export const Route = createFileRoute("/api/generate")({
           const isEdit = !!(currentHtml && currentHtml.length > 200);
           const finalUserPrompt = isEdit
             ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
-            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, ~600-1000 lines. HTML only, no fences.";
+            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
 
           const upstream = await fetch(
             "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -99,11 +99,41 @@ export const Route = createFileRoute("/api/generate")({
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
           let buf = "";
+          let finishReason = "";
+          let emittedContent = false;
+
+          const processSseLine = (line: string, controller: ReadableStreamDefaultController<Uint8Array>) => {
+            const t = line.trim();
+            if (!t.startsWith("data:")) return false;
+            const payload = t.slice(5).trim();
+            if (payload === "[DONE]") return true;
+            try {
+              const json = JSON.parse(payload);
+              const choice = json.choices?.[0];
+              if (choice?.finish_reason) finishReason = choice.finish_reason;
+              const delta = choice?.delta?.content;
+              if (delta) {
+                emittedContent = true;
+                controller.enqueue(encoder.encode(delta));
+              }
+            } catch {
+              /* ignore malformed stream fragments */
+            }
+            return false;
+          };
+
+          const enqueueStatus = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+            const complete = emittedContent && (!finishReason || finishReason === "stop");
+            const status = complete ? "complete" : `incomplete:${finishReason || "no-content"}`;
+            controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
+          };
 
           const stream = new ReadableStream({
             async pull(controller) {
               const { value, done } = await reader.read();
               if (done) {
+                if (buf.trim()) processSseLine(buf, controller);
+                enqueueStatus(controller);
                 controller.close();
                 return;
               }
@@ -111,17 +141,7 @@ export const Route = createFileRoute("/api/generate")({
               const lines = buf.split("\n");
               buf = lines.pop() ?? "";
               for (const line of lines) {
-                const t = line.trim();
-                if (!t.startsWith("data:")) continue;
-                const payload = t.slice(5).trim();
-                if (payload === "[DONE]") continue;
-                try {
-                  const json = JSON.parse(payload);
-                  const delta = json.choices?.[0]?.delta?.content;
-                  if (delta) controller.enqueue(encoder.encode(delta));
-                } catch {
-                  /* ignore */
-                }
+                processSseLine(line, controller);
               }
             },
             cancel() {
