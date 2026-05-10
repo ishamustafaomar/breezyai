@@ -1,20 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-const SYSTEM_PROMPT = `You are Breezy's site generator. Given a user's idea and conversation, you output ONE complete, self-contained HTML5 document for a single-page website that matches their request.
+const SYSTEM_PROMPT = `You are Breezy's site generator — an elite product designer + frontend engineer. You output ONE complete, self-contained HTML5 document for a single-page website that looks like it was built by a top design studio (think Linear, Vercel, Stripe, Apple).
 
-Hard rules:
-- Output ONLY the raw HTML. No markdown fences, no commentary, no explanations.
+OUTPUT RULES (strict):
+- Output ONLY the raw HTML. No markdown fences, no commentary.
 - Start with <!DOCTYPE html> and end with </html>.
-- Include <meta name="viewport" content="width=device-width,initial-scale=1">.
-- Use Tailwind via <script src="https://cdn.tailwindcss.com"></script> in <head>.
-- Use Google Fonts (Inter + a tasteful display font like Fraunces or Space Grotesk) via <link>.
-- Design: modern, polished, generous whitespace, soft pastel palette by default unless the prompt suggests otherwise. Beautiful gradients, rounded-2xl cards, subtle shadows, smooth hover states.
-- Include real, on-topic copy (not lorem ipsum) tailored to the user's idea.
-- Include multiple sections as appropriate: hero, features/benefits, social proof or stats, pricing or CTA, footer.
-- Use emoji sparingly as decorative icons where it fits.
-- Use only inline images via emoji or CSS gradients/SVG — no external image URLs.
-- Make it responsive and accessible (semantic tags, alt text on any svg with role).
-- The page should look great inside a 1200px-wide iframe.`;
+- <meta name="viewport" content="width=device-width,initial-scale=1">.
+- Tailwind via <script src="https://cdn.tailwindcss.com"></script> in <head>.
+- Configure Tailwind inline with a custom theme (extend colors, fontFamily) BEFORE the CDN script runs is not possible — instead, use a <script>tailwind.config = {...}</script> AFTER the CDN script.
+- Google Fonts: a tasteful display font (Fraunces, Instrument Serif, Space Grotesk, or Cal Sans alternative) + Inter for body.
+- Inline critical CSS in a <style> block for: smooth scroll, gradient text, custom scrollbar, subtle noise/grain, animated blobs, fade-in on load.
+
+DESIGN BAR (this is the most important part):
+- Hero must be visually stunning: large display headline (5xl–7xl), gradient or layered text accent, supporting sub-headline, dual CTAs (primary + ghost), trust row (logos as styled text or emoji), and a decorative element (gradient blob, abstract SVG, screenshot mockup made of divs, app preview card, or floating UI elements).
+- Use a cohesive, intentional color system. Pick a palette (2-3 brand colors + neutrals) and stick to it. Never use default Tailwind blue-500 / gray-900 — pick refined shades (slate, zinc, stone, plus a vivid accent like indigo-600, emerald-500, rose-500, amber-400).
+- Generous whitespace. Sections should breathe (py-20 to py-32).
+- Typography hierarchy: display font for h1/h2 with tight tracking (tracking-tight), Inter for body, muted secondary text.
+- Cards: rounded-2xl or rounded-3xl, soft borders (border border-black/5), layered shadows, subtle hover lift.
+- Include 5-7 sections minimum: Nav, Hero, Logo cloud / social proof, Feature grid (3 cards with icons), Big feature with mock UI or imagery, Testimonial(s), Pricing or CTA banner, Footer with multiple columns.
+- Build "imagery" with pure CSS/SVG: gradient blobs, abstract SVG illustrations, faux app screenshots assembled from divs, glassmorphism cards. NO external image URLs.
+- Icons: inline SVG (Heroicons-style 24x24 outline). No icon libraries.
+- Subtle motion: fade/slide-in via CSS animations on load, hover transitions on cards/buttons (transition-all duration-300), gradient hue shift, animated gradient blobs.
+- Real, on-topic copy tailored to the user's idea. No lorem ipsum. Specific, benefit-driven, confident voice.
+- Responsive (mobile-first). Looks great at 380px, 820px, and 1200px wide.
+- Accessibility: semantic tags, aria-labels on icon buttons, alt-equivalent on decorative SVGs (aria-hidden), good contrast.
+
+Aim for ~600-1000 lines of polished HTML. Quality over brevity. Make it feel premium.`;
 
 export const Route = createFileRoute("/api/generate")({
   server: {
@@ -42,21 +53,23 @@ export const Route = createFileRoute("/api/generate")({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "google/gemini-3-flash-preview",
+                model: "google/gemini-2.5-pro",
+                stream: true,
+                max_tokens: 16000,
                 messages: [
                   { role: "system", content: SYSTEM_PROMPT },
                   ...messages,
                   {
                     role: "user",
                     content:
-                      "Now output the complete HTML document for this site. HTML only, no fences.",
+                      "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, ~600-1000 lines. HTML only, no fences.",
                   },
                 ],
               }),
             },
           );
 
-          if (!upstream.ok) {
+          if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
               return new Response(JSON.stringify({ error: "Rate limited — try again shortly." }), {
                 status: 429, headers: { "Content-Type": "application/json" },
@@ -65,26 +78,54 @@ export const Route = createFileRoute("/api/generate")({
               return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
                 status: 402, headers: { "Content-Type": "application/json" },
               });
-            const t = await upstream.text();
+            const t = await upstream.text().catch(() => "");
             console.error("generate gateway error:", upstream.status, t);
             return new Response(JSON.stringify({ error: "AI gateway error" }), {
               status: 500, headers: { "Content-Type": "application/json" },
             });
           }
 
-          const data = (await upstream.json()) as {
-            choices?: { message?: { content?: string } }[];
-          };
-          let html = data.choices?.[0]?.message?.content?.trim() ?? "";
-          // Strip accidental markdown fences
-          html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
-          if (!html.toLowerCase().startsWith("<!doctype") && !html.toLowerCase().startsWith("<html")) {
-            // Wrap if model returned a fragment
-            html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
-          }
+          // Re-stream as a simple text stream of raw HTML deltas to the client.
+          const reader = upstream.body.getReader();
+          const decoder = new TextDecoder();
+          const encoder = new TextEncoder();
+          let buf = "";
 
-          return new Response(JSON.stringify({ html }), {
-            headers: { "Content-Type": "application/json" },
+          const stream = new ReadableStream({
+            async pull(controller) {
+              const { value, done } = await reader.read();
+              if (done) {
+                controller.close();
+                return;
+              }
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split("\n");
+              buf = lines.pop() ?? "";
+              for (const line of lines) {
+                const t = line.trim();
+                if (!t.startsWith("data:")) continue;
+                const payload = t.slice(5).trim();
+                if (payload === "[DONE]") continue;
+                try {
+                  const json = JSON.parse(payload);
+                  const delta = json.choices?.[0]?.delta?.content;
+                  if (delta) controller.enqueue(encoder.encode(delta));
+                } catch {
+                  /* ignore */
+                }
+              }
+            },
+            cancel() {
+              reader.cancel().catch(() => {});
+            },
+          });
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Cache-Control": "no-cache, no-transform",
+              "X-Accel-Buffering": "no",
+            },
           });
         } catch (e) {
           console.error("generate route error:", e);
