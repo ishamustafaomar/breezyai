@@ -75,11 +75,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Breezy — Vibe-code beautiful apps in minutes" },
       { name: "description", content: "Breezy is the friendliest AI builder for shipping web apps. Describe it, see it, ship it." },
       { name: "author", content: "Breezy" },
-      { property: "og:title", content: "Breezy — Vibe-code beautiful apps" },
-      { property: "og:description", content: "The friendliest AI builder for shipping web apps." },
+      { property: "og:title", content: "Breezy — Vibe-code beautiful apps in minutes" },
+      { property: "og:description", content: "Breezy is the friendliest AI builder for shipping web apps. Describe it, see it, ship it." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Breezy — Vibe-code beautiful apps in minutes" },
+      { name: "twitter:description", content: "Breezy is the friendliest AI builder for shipping web apps. Describe it, see it, ship it." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/809872e7-d22a-4ff0-b4ec-8c7c5e163cde" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/809872e7-d22a-4ff0-b4ec-8c7c5e163cde" },
     ],
     links: [
       {
