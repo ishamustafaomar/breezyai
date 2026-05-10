@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
   Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square, Check, Copy, Download,
+  History, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
@@ -54,6 +55,10 @@ const PHASES = [
   "Finalizing markup",
 ];
 
+type Version = { id: string; html: string; prompt: string; createdAt: number };
+
+const STORAGE_KEY = "breezy.project.v1";
+
 function BuilderApp() {
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
@@ -61,10 +66,53 @@ function BuilderApp() {
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
   const [generatedHtml, setGeneratedHtml] = useState<string>("");
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [projectName, setProjectName] = useState<string>("Untitled project");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hydratedRef = useRef(false);
+
+  // Hydrate from localStorage on mount
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        messages?: Msg[]; versions?: Version[]; activeVersionId?: string; name?: string;
+      };
+      if (data.messages?.length) setMessages(data.messages);
+      if (data.versions?.length) {
+        setVersions(data.versions);
+        const active = data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
+        if (active) {
+          setActiveVersionId(active.id);
+          setGeneratedHtml(active.html);
+        }
+      }
+      if (data.name) setProjectName(data.name);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist on change
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ messages, versions, activeVersionId, name: projectName }),
+      );
+    } catch {
+      /* quota: ignore */
+    }
+  }, [messages, versions, activeVersionId, projectName]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -98,22 +146,33 @@ function BuilderApp() {
     phaseTimerRef.current = null;
   };
 
-  const generate = async (history: Msg[]) => {
+  const generate = async (history: Msg[], userPrompt: string) => {
     genAbortRef.current?.abort();
     const controller = new AbortController();
     genAbortRef.current = controller;
-    setGeneratedHtml("");
     startPhaseTicker();
 
-    try {
-      const resp = await fetch("/api/generate", {
+    const baseHtml = generatedHtml; // edit base — preserved if request fails
+
+    const doFetch = () =>
+      fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: history.map((m) => ({ role: m.role, content: m.content })),
+          currentHtml: baseHtml || undefined,
         }),
         signal: controller.signal,
       });
+
+    try {
+      let resp = await doFetch();
+      // Auto-retry once on 429 with a short backoff
+      if (resp.status === 429) {
+        patchBuild({ phase: "Rate-limited, retrying" });
+        await new Promise((r) => setTimeout(r, 4000));
+        resp = await doFetch();
+      }
       if (!resp.ok || !resp.body) {
         const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
         toast.error(error || "Generation failed");
@@ -124,9 +183,7 @@ function BuilderApp() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let html = "";
-      const TARGET = 22000; // bytes ≈ ~95%
-      // Don't update the iframe per chunk — it causes constant reloads and
-      // makes the final render feel laggy. Just track progress; render once on done.
+      const TARGET = 22000;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -134,12 +191,20 @@ function BuilderApp() {
         const pct = Math.min(95, Math.round((html.length / TARGET) * 95));
         patchBuild({ progress: pct });
       }
-      // Strip accidental fences just in case
       html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
       if (!html.toLowerCase().startsWith("<!doctype") && !html.toLowerCase().startsWith("<html")) {
         html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
       }
       setGeneratedHtml(html);
+      // Push a new version
+      const v: Version = {
+        id: crypto.randomUUID(),
+        html,
+        prompt: userPrompt,
+        createdAt: Date.now(),
+      };
+      setVersions((prev) => [...prev, v]);
+      setActiveVersionId(v.id);
       patchBuild({ progress: 100, phase: "Ready", done: true });
       return html;
     } catch (e) {
@@ -171,7 +236,7 @@ function BuilderApp() {
     setBusy(true);
 
     // 1) Generate site (with live progress)
-    const html = await generate(next);
+    const html = await generate(next, trimmed);
 
     // 2) Brief chat summary AFTER build (so it doesn't ramble while building)
     if (html) {
@@ -230,7 +295,11 @@ function BuilderApp() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar />
+      <BuilderTopBar
+        projectName={projectName}
+        setProjectName={setProjectName}
+        versionCount={versions.length}
+      />
       <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
         {/* Chat */}
         <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
@@ -239,13 +308,62 @@ function BuilderApp() {
               <Layers className="size-4 text-muted-foreground" />
               <span className="text-sm font-semibold">Conversation</span>
             </div>
-            <button
-              onClick={() => { stop(); setMessages(STARTER); setGeneratedHtml(""); }}
-              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-            >
-              <Plus className="size-3.5" /> New
-            </button>
+            <div className="flex items-center gap-1">
+              {versions.length > 0 && (
+                <button
+                  onClick={() => setShowHistory((s) => !s)}
+                  className={`text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full transition ${showHistory ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  title="Version history"
+                >
+                  <History className="size-3.5" /> v{versions.length}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  stop();
+                  setMessages(STARTER);
+                  setGeneratedHtml("");
+                  setVersions([]);
+                  setActiveVersionId(null);
+                  setShowHistory(false);
+                  setProjectName("Untitled project");
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
+              >
+                <Plus className="size-3.5" /> New
+              </button>
+            </div>
           </div>
+
+          {showHistory && versions.length > 0 && (
+            <div className="border-b border-border bg-background/60 max-h-56 overflow-y-auto p-3 space-y-1.5">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">Versions</p>
+              {versions.slice().reverse().map((v, idx) => {
+                const realIdx = versions.length - idx;
+                const active = v.id === activeVersionId;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => {
+                      setGeneratedHtml(v.html);
+                      setActiveVersionId(v.id);
+                      toast.success(`Restored version ${realIdx}`);
+                    }}
+                    className={`w-full text-left rounded-xl border px-3 py-2 transition flex items-center gap-2 ${active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"}`}
+                  >
+                    <div className={`size-6 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      v{realIdx}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleTimeString()}</p>
+                    </div>
+                    {active ? <Check className="size-3.5 text-primary shrink-0" /> : <RotateCcw className="size-3 text-muted-foreground shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
@@ -394,6 +512,19 @@ function BuilderApp() {
               >
                 <Download className="size-3.5" /> Download
               </button>
+              <button
+                disabled={!generatedHtml}
+                onClick={() => {
+                  const blob = new Blob([generatedHtml], { type: "text/html" });
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, "_blank");
+                  setTimeout(() => URL.revokeObjectURL(url), 30000);
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
+                title="Open in new tab"
+              >
+                <ExternalLink className="size-3.5" /> Open
+              </button>
               <button className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted">
                 <Share2 className="size-3.5" /> Share
               </button>
@@ -414,7 +545,15 @@ function BuilderApp() {
   );
 }
 
-function BuilderTopBar() {
+function BuilderTopBar({
+  projectName,
+  setProjectName,
+  versionCount,
+}: {
+  projectName: string;
+  setProjectName: (n: string) => void;
+  versionCount: number;
+}) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -429,9 +568,15 @@ function BuilderTopBar() {
       </Link>
       <div className="size-6 w-px bg-border" />
       <input
-        defaultValue="Untitled project"
+        value={projectName}
+        onChange={(e) => setProjectName(e.target.value)}
         className="bg-transparent text-sm font-medium outline-none focus:bg-muted px-2 py-1 rounded-md max-w-[220px]"
       />
+      {versionCount > 0 && (
+        <span className="text-[11px] text-muted-foreground font-mono px-1.5 py-0.5 rounded bg-muted">
+          v{versionCount}
+        </span>
+      )}
       <div className="ml-auto flex items-center gap-2">
         <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Auto-saved
