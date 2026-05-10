@@ -366,7 +366,34 @@ function BuilderApp() {
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <button
+                disabled={!generatedHtml}
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedHtml);
+                  toast.success("HTML copied to clipboard");
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
+                title="Copy HTML"
+              >
+                <Copy className="size-3.5" /> Copy
+              </button>
+              <button
+                disabled={!generatedHtml}
+                onClick={() => {
+                  const blob = new Blob([generatedHtml], { type: "text/html" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "index.html";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
+                title="Download HTML"
+              >
+                <Download className="size-3.5" /> Download
+              </button>
               <button className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted">
                 <Share2 className="size-3.5" /> Share
               </button>
