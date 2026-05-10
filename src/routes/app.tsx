@@ -51,6 +51,34 @@ function BuilderApp() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streaming]);
 
+  const generate = async (history: Msg[]) => {
+    genAbortRef.current?.abort();
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+    setGenerating(true);
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
+        toast.error(error || "Generation failed");
+        return;
+      }
+      const { html } = (await resp.json()) as { html: string };
+      if (html) setGeneratedHtml(html);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        toast.error((e as Error).message || "Generation failed");
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
@@ -63,6 +91,9 @@ function BuilderApp() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Kick off real site generation in parallel with the chat reply.
+    generate(next);
 
     let acc = "";
     await streamChat({
@@ -89,7 +120,10 @@ function BuilderApp() {
   const stop = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    genAbortRef.current?.abort();
+    genAbortRef.current = null;
     setStreaming(false);
+    setGenerating(false);
   };
 
   return (
