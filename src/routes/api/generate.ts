@@ -53,9 +53,9 @@ export const Route = createFileRoute("/api/generate")({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "google/gemini-2.5-pro",
+                model: "openai/gpt-5",
                 stream: true,
-                max_tokens: 16000,
+                max_completion_tokens: 16000,
                 messages: [
                   { role: "system", content: SYSTEM_PROMPT },
                   ...messages,
