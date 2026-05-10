@@ -30,7 +30,9 @@ DESIGN BAR (this is the most important part):
 - Responsive (mobile-first). Looks great at 380px, 820px, and 1200px wide.
 - Accessibility: semantic tags, aria-labels on icon buttons, alt-equivalent on decorative SVGs (aria-hidden), good contrast.
 
-Aim for ~600-1000 lines of polished HTML. Quality over brevity. Make it feel premium.`;
+Do not over-expand. Finish the entire document every time. A complete, polished 350-650 line document is better than an unfinished 1000-line draft.
+
+Aim for a complete premium site that never cuts off mid-section. Quality and completeness over length.`;
 
 export const Route = createFileRoute("/api/generate")({
   server: {
