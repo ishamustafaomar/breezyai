@@ -233,7 +233,7 @@ function BuilderApp() {
         toast.error((e as Error).message || "Generation failed");
         patchBuild({ done: true, error: (e as Error).message, progress: 100, phase: "Failed" });
       } else {
-        patchBuild({ done: true, phase: "Stopped", progress: 100 });
+        patchBuild({ done: true, error: "Build stopped before completion.", phase: "Stopped" });
       }
       return null;
     } finally {
@@ -812,7 +812,7 @@ function EmptyPreview({ build }: { build: BuildStatus | null }) {
         </h2>
         <p className="text-sm text-muted-foreground">
           {generating
-            ? "Designing your site live. The preview will appear as it builds."
+            ? "Designing your site now. I’ll only show it once the full page is finished and verified."
             : "Send a message in the chat and a real, live website will appear right here."}
         </p>
         {generating && (
