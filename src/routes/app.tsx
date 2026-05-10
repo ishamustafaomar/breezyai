@@ -2,9 +2,26 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
-  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square, Check, Copy, Download,
-  History, ExternalLink, RotateCcw,
+  Sparkles,
+  ArrowUp,
+  Code2,
+  Eye,
+  Smartphone,
+  Monitor,
+  Tablet,
+  Layers,
+  Plus,
+  Share2,
+  Rocket,
+  ChevronLeft,
+  FileCode2,
+  Square,
+  Check,
+  Copy,
+  Download,
+  History,
+  ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
@@ -13,7 +30,10 @@ export const Route = createFileRoute("/app")({
   head: () => ({
     meta: [
       { title: "Breezy Builder — Your AI dev studio" },
-      { name: "description", content: "The Breezy builder. Chat to design, edit code, and preview live." },
+      {
+        name: "description",
+        content: "The Breezy builder. Chat to design, edit code, and preview live.",
+      },
     ],
   }),
   component: BuilderApp,
@@ -58,7 +78,10 @@ const PHASES = [
 const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
 
 function inspectGeneratedHtml(html: string) {
-  const cleaned = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const cleaned = html
+    .replace(/^```(?:html)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
   const lower = cleaned.toLowerCase();
   const hasDocumentStart = lower.startsWith("<!doctype") || lower.startsWith("<html");
   const hasDocumentEnd = lower.endsWith("</html>");
@@ -95,12 +118,17 @@ function BuilderApp() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw) as {
-        messages?: Msg[]; versions?: Version[]; activeVersionId?: string; name?: string;
+        messages?: Msg[];
+        versions?: Version[];
+        activeVersionId?: string;
+        name?: string;
       };
       if (data.messages?.length) setMessages(data.messages);
       if (data.versions?.length) {
         setVersions(data.versions);
-        const active = data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
+        const active =
+          data.versions.find((v) => v.id === data.activeVersionId) ??
+          data.versions[data.versions.length - 1];
         if (active) {
           setActiveVersionId(active.id);
           setGeneratedHtml(active.html);
@@ -187,7 +215,12 @@ function BuilderApp() {
       if (!resp.ok || !resp.body) {
         const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
         toast.error(error || "Generation failed");
-        patchBuild({ done: true, error: error || "Generation failed", progress: 100, phase: "Failed" });
+        patchBuild({
+          done: true,
+          error: error || "Generation failed",
+          progress: 100,
+          phase: "Failed",
+        });
         return null;
       }
 
@@ -211,7 +244,8 @@ function BuilderApp() {
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
-        const error = "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
+        const error =
+          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
         toast.error("Build was incomplete — not marked finished");
         patchBuild({ done: true, error, progress: 98, phase: "Incomplete" });
         return null;
@@ -358,31 +392,44 @@ function BuilderApp() {
 
           {showHistory && versions.length > 0 && (
             <div className="border-b border-border bg-background/60 max-h-56 overflow-y-auto p-3 space-y-1.5">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">Versions</p>
-              {versions.slice().reverse().map((v, idx) => {
-                const realIdx = versions.length - idx;
-                const active = v.id === activeVersionId;
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => {
-                      setGeneratedHtml(v.html);
-                      setActiveVersionId(v.id);
-                      toast.success(`Restored version ${realIdx}`);
-                    }}
-                    className={`w-full text-left rounded-xl border px-3 py-2 transition flex items-center gap-2 ${active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"}`}
-                  >
-                    <div className={`size-6 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                      v{realIdx}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleTimeString()}</p>
-                    </div>
-                    {active ? <Check className="size-3.5 text-primary shrink-0" /> : <RotateCcw className="size-3 text-muted-foreground shrink-0" />}
-                  </button>
-                );
-              })}
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">
+                Versions
+              </p>
+              {versions
+                .slice()
+                .reverse()
+                .map((v, idx) => {
+                  const realIdx = versions.length - idx;
+                  const active = v.id === activeVersionId;
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => {
+                        setGeneratedHtml(v.html);
+                        setActiveVersionId(v.id);
+                        toast.success(`Restored version ${realIdx}`);
+                      }}
+                      className={`w-full text-left rounded-xl border px-3 py-2 transition flex items-center gap-2 ${active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"}`}
+                    >
+                      <div
+                        className={`size-6 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                      >
+                        v{realIdx}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(v.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      {active ? (
+                        <Check className="size-3.5 text-primary shrink-0" />
+                      ) : (
+                        <RotateCcw className="size-3 text-muted-foreground shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           )}
 
@@ -427,7 +474,10 @@ function BuilderApp() {
 
           <div className="p-4 border-t border-border bg-background/60">
             <form
-              onSubmit={(e) => { e.preventDefault(); send(input); }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                send(input);
+              }}
               className="flex items-end gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 focus-within:ring-2 ring-primary/30 transition"
             >
               <textarea
@@ -556,9 +606,11 @@ function BuilderApp() {
           </div>
 
           <div className="flex-1 overflow-auto p-6 bg-gradient-to-br from-muted/30 via-background to-muted/30">
-            {view === "preview"
-              ? <PreviewCanvas device={device} html={generatedHtml} build={lastBuild} />
-              : <CodeView html={generatedHtml} />}
+            {view === "preview" ? (
+              <PreviewCanvas device={device} html={generatedHtml} build={lastBuild} />
+            ) : (
+              <CodeView html={generatedHtml} />
+            )}
           </div>
         </section>
       </div>
@@ -577,7 +629,10 @@ function BuilderTopBar({
 }) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
-      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
         <ChevronLeft className="size-4" /> Back
       </Link>
       <div className="size-6 w-px bg-border" />
@@ -625,7 +680,12 @@ function renderInline(text: string) {
   while ((m = re.exec(text)) !== null) {
     if (m.index > i) parts.push(text.slice(i, m.index));
     if (m[2]) parts.push(<strong key={key++}>{m[2]}</strong>);
-    else if (m[3]) parts.push(<code key={key++} className="px-1 py-0.5 rounded bg-card text-[12px] font-mono">{m[3]}</code>);
+    else if (m[3])
+      parts.push(
+        <code key={key++} className="px-1 py-0.5 rounded bg-card text-[12px] font-mono">
+          {m[3]}
+        </code>,
+      );
     i = m.index + m[0].length;
   }
   if (i < text.length) parts.push(text.slice(i));
@@ -640,7 +700,9 @@ function MessageContent({ text }: { text: string }) {
     if (!bullets.length) return;
     out.push(
       <ul key={`u${k}`} className="list-disc pl-5 space-y-1">
-        {bullets.map((b, i) => <li key={i}>{renderInline(b)}</li>)}
+        {bullets.map((b, i) => (
+          <li key={i}>{renderInline(b)}</li>
+        ))}
       </ul>,
     );
     bullets = [];
@@ -660,10 +722,7 @@ function MessageContent({ text }: { text: string }) {
 
 function BuildCard({ build }: { build: BuildStatus }) {
   const steps = PHASES;
-  const activeIdx = Math.min(
-    steps.length - 1,
-    Math.floor((build.progress / 100) * steps.length),
-  );
+  const activeIdx = Math.min(steps.length - 1, Math.floor((build.progress / 100) * steps.length));
   return (
     <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full">
       <div className="flex items-center justify-between">
@@ -672,13 +731,17 @@ function BuildCard({ build }: { build: BuildStatus }) {
             {!build.done && (
               <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 animate-ping" />
             )}
-            <span className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`} />
+            <span
+              className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`}
+            />
           </span>
           <span className="text-sm font-semibold">
             {build.done ? (build.error ? "Build failed" : "Site ready") : "Building your site"}
           </span>
         </div>
-        <span className="text-xs font-mono text-muted-foreground tabular-nums">{build.progress}%</span>
+        <span className="text-xs font-mono text-muted-foreground tabular-nums">
+          {build.progress}%
+        </span>
       </div>
 
       {/* Progress bar */}
@@ -696,12 +759,26 @@ function BuildCard({ build }: { build: BuildStatus }) {
           const active = !build.done && i === activeIdx;
           return (
             <li key={s} className="flex items-center gap-2 text-xs">
-              <span className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
-                {done ? <Check className="size-2.5" strokeWidth={3} /> : active ? (
+              <span
+                className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
+              >
+                {done ? (
+                  <Check className="size-2.5" strokeWidth={3} />
+                ) : active ? (
                   <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-                ) : <span className="size-1 rounded-full bg-muted-foreground/40" />}
+                ) : (
+                  <span className="size-1 rounded-full bg-muted-foreground/40" />
+                )}
               </span>
-              <span className={done ? "text-muted-foreground line-through decoration-muted-foreground/40" : active ? "text-foreground font-medium" : "text-muted-foreground"}>
+              <span
+                className={
+                  done
+                    ? "text-muted-foreground line-through decoration-muted-foreground/40"
+                    : active
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground"
+                }
+              >
                 {active ? `${s}…` : s}
               </span>
             </li>
@@ -722,7 +799,9 @@ function Message({ msg }: { msg: Msg }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
-        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.content}</div>
+        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">
+          {msg.content}
+        </div>
       </div>
     );
   }

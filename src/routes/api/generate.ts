@@ -57,40 +57,40 @@ export const Route = createFileRoute("/api/generate")({
             ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
             : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
 
-          const upstream = await fetch(
-            "https://ai.gateway.lovable.dev/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "openai/gpt-5",
-                stream: true,
-                max_completion_tokens: 16000,
-                messages: [
-                  { role: "system", content: SYSTEM_PROMPT },
-                  ...messages,
-                  { role: "user", content: finalUserPrompt },
-                ],
-              }),
+          const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
             },
-          );
+            body: JSON.stringify({
+              model: "openai/gpt-5",
+              stream: true,
+              max_completion_tokens: 16000,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                ...messages,
+                { role: "user", content: finalUserPrompt },
+              ],
+            }),
+          });
 
           if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
               return new Response(JSON.stringify({ error: "Rate limited — try again shortly." }), {
-                status: 429, headers: { "Content-Type": "application/json" },
+                status: 429,
+                headers: { "Content-Type": "application/json" },
               });
             if (upstream.status === 402)
               return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-                status: 402, headers: { "Content-Type": "application/json" },
+                status: 402,
+                headers: { "Content-Type": "application/json" },
               });
             const t = await upstream.text().catch(() => "");
             console.error("generate gateway error:", upstream.status, t);
             return new Response(JSON.stringify({ error: "AI gateway error" }), {
-              status: 500, headers: { "Content-Type": "application/json" },
+              status: 500,
+              headers: { "Content-Type": "application/json" },
             });
           }
 
@@ -102,7 +102,10 @@ export const Route = createFileRoute("/api/generate")({
           let finishReason = "";
           let emittedContent = false;
 
-          const processSseLine = (line: string, controller: ReadableStreamDefaultController<Uint8Array>) => {
+          const processSseLine = (
+            line: string,
+            controller: ReadableStreamDefaultController<Uint8Array>,
+          ) => {
             const t = line.trim();
             if (!t.startsWith("data:")) return false;
             const payload = t.slice(5).trim();
