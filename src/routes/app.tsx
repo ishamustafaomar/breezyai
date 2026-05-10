@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
-  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square,
+  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square, Check,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
@@ -18,13 +18,22 @@ export const Route = createFileRoute("/app")({
   component: BuilderApp,
 });
 
-type Msg = { role: "user" | "assistant"; content: string };
+type BuildStatus = {
+  phase: string;
+  progress: number; // 0-100
+  done: boolean;
+  error?: string;
+};
+
+type Msg =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; build?: BuildStatus };
 
 const STARTER: Msg[] = [
   {
     role: "assistant",
     content:
-      "Hey! I'm **Breezy** ✨ Tell me what you want to build — even a half-baked idea is great. I'll sketch it out and we can shape it together.",
+      "Hey! I'm **Breezy** ✨ Tell me what you want to build — even a half-baked idea is great. I'll design it live and we can shape it together.",
   },
 ];
 
@@ -35,86 +44,171 @@ const IDEAS = [
   "A SaaS pricing page",
 ];
 
+const PHASES = [
+  "Sketching the layout",
+  "Choosing a color palette",
+  "Writing the copy",
+  "Designing the hero",
+  "Wiring up sections",
+  "Polishing the details",
+  "Finalizing markup",
+];
+
 function BuilderApp() {
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
   const [generatedHtml, setGeneratedHtml] = useState<string>("");
-  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages]);
+
+  // Update the last assistant message's build status
+  const patchBuild = (patch: Partial<BuildStatus>) => {
+    setMessages((prev) => {
+      const copy = prev.slice();
+      for (let i = copy.length - 1; i >= 0; i--) {
+        const m = copy[i];
+        if (m.role === "assistant" && m.build) {
+          copy[i] = { ...m, build: { ...m.build, ...patch } };
+          break;
+        }
+      }
+      return copy;
+    });
+  };
+
+  const startPhaseTicker = () => {
+    let idx = 0;
+    phaseTimerRef.current && clearInterval(phaseTimerRef.current);
+    phaseTimerRef.current = setInterval(() => {
+      idx = Math.min(idx + 1, PHASES.length - 1);
+      patchBuild({ phase: PHASES[idx] });
+    }, 2800);
+  };
+  const stopPhaseTicker = () => {
+    if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
+    phaseTimerRef.current = null;
+  };
 
   const generate = async (history: Msg[]) => {
     genAbortRef.current?.abort();
     const controller = new AbortController();
     genAbortRef.current = controller;
-    setGenerating(true);
+    setGeneratedHtml("");
+    startPhaseTicker();
+
     try {
       const resp = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+        }),
         signal: controller.signal,
       });
-      if (!resp.ok) {
+      if (!resp.ok || !resp.body) {
         const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
         toast.error(error || "Generation failed");
-        return;
+        patchBuild({ done: true, error: error || "Generation failed", progress: 100, phase: "Failed" });
+        return null;
       }
-      const { html } = (await resp.json()) as { html: string };
-      if (html) setGeneratedHtml(html);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let html = "";
+      const TARGET = 18000; // bytes ≈ ~95%
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        html += chunk;
+        // Live-update preview as HTML streams in
+        setGeneratedHtml(html);
+        const pct = Math.min(95, Math.round((html.length / TARGET) * 95));
+        patchBuild({ progress: pct });
+      }
+      // Strip accidental fences just in case
+      html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
+      if (!html.toLowerCase().startsWith("<!doctype") && !html.toLowerCase().startsWith("<html")) {
+        html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
+      }
+      setGeneratedHtml(html);
+      patchBuild({ progress: 100, phase: "Ready", done: true });
+      return html;
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         toast.error((e as Error).message || "Generation failed");
+        patchBuild({ done: true, error: (e as Error).message, progress: 100, phase: "Failed" });
+      } else {
+        patchBuild({ done: true, phase: "Stopped", progress: 100 });
       }
+      return null;
     } finally {
-      setGenerating(false);
+      stopPhaseTicker();
     }
   };
 
   const send = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || streaming) return;
+    if (!trimmed || busy) return;
 
     const userMsg: Msg = { role: "user", content: trimmed };
+    const buildMsg: Msg = {
+      role: "assistant",
+      content: "",
+      build: { phase: PHASES[0], progress: 3, done: false },
+    };
     const next = [...messages, userMsg];
-    setMessages([...next, { role: "assistant", content: "" }]);
+    setMessages([...next, buildMsg]);
     setInput("");
-    setStreaming(true);
+    setBusy(true);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    // 1) Generate site (with live progress)
+    const html = await generate(next);
 
-    // Kick off real site generation in parallel with the chat reply.
-    generate(next);
+    // 2) Brief chat summary AFTER build (so it doesn't ramble while building)
+    if (html) {
+      const summaryController = new AbortController();
+      abortRef.current = summaryController;
+      let acc = "";
+      await streamChat({
+        messages: [
+          ...next,
+          {
+            role: "user",
+            content:
+              "I just generated a website for the request above. In 1–2 short, friendly sentences, tell me what you built and suggest one specific tweak I could ask for next. Do NOT describe the code or say the word 'HTML'.",
+          },
+        ],
+        signal: summaryController.signal,
+        onDelta: (chunk) => {
+          acc += chunk;
+          setMessages((prev) => {
+            const copy = prev.slice();
+            const last = copy[copy.length - 1];
+            if (last.role === "assistant") {
+              copy[copy.length - 1] = { ...last, content: acc };
+            }
+            return copy;
+          });
+        },
+        onError: () => {
+          /* silent — build already succeeded */
+        },
+        onDone: () => {},
+      });
+      abortRef.current = null;
+    }
 
-    let acc = "";
-    await streamChat({
-      messages: next,
-      signal: controller.signal,
-      onDelta: (chunk) => {
-        acc += chunk;
-        setMessages((prev) => {
-          const copy = prev.slice();
-          copy[copy.length - 1] = { role: "assistant", content: acc };
-          return copy;
-        });
-      },
-      onError: (err) => {
-        toast.error(err);
-        setMessages((prev) => prev.slice(0, -1));
-      },
-      onDone: () => {},
-    });
-    setStreaming(false);
-    abortRef.current = null;
+    setBusy(false);
   };
 
   const stop = () => {
@@ -122,9 +216,17 @@ function BuilderApp() {
     abortRef.current = null;
     genAbortRef.current?.abort();
     genAbortRef.current = null;
-    setStreaming(false);
-    setGenerating(false);
+    stopPhaseTicker();
+    setBusy(false);
   };
+
+  const lastBuild = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "assistant" && m.build && !m.build.done) return m.build;
+    }
+    return null;
+  })();
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
@@ -148,9 +250,9 @@ function BuilderApp() {
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
-              <Message key={i} msg={m} streaming={streaming && i === messages.length - 1 && m.role === "assistant"} />
+              <Message key={i} msg={m} />
             ))}
-            {messages.length === 1 && !streaming && (
+            {messages.length === 1 && !busy && (
               <div className="pt-2 grid gap-2">
                 {IDEAS.map((idea) => (
                   <button
@@ -181,10 +283,10 @@ function BuilderApp() {
                   }
                 }}
                 rows={1}
-                placeholder={streaming ? "Breezy is replying…" : "Describe a change…"}
+                placeholder={busy ? "Breezy is building…" : "Describe a change…"}
                 className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
               />
-              {streaming ? (
+              {busy ? (
                 <button
                   type="button"
                   onClick={stop}
@@ -258,7 +360,7 @@ function BuilderApp() {
 
           <div className="flex-1 overflow-auto p-6 bg-gradient-to-br from-muted/30 via-background to-muted/30">
             {view === "preview"
-              ? <PreviewCanvas device={device} html={generatedHtml} generating={generating} />
+              ? <PreviewCanvas device={device} html={generatedHtml} build={lastBuild} />
               : <CodeView html={generatedHtml} />}
           </div>
         </section>
@@ -303,7 +405,6 @@ function Avatar() {
   );
 }
 
-/** Tiny markdown-ish renderer: **bold**, `code`, bullets, line breaks. No deps. */
 function renderInline(text: string) {
   const parts: (string | ReactNode)[] = [];
   let i = 0;
@@ -346,7 +447,67 @@ function MessageContent({ text }: { text: string }) {
   return <div className="space-y-2 text-sm leading-relaxed">{out}</div>;
 }
 
-function Message({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
+function BuildCard({ build }: { build: BuildStatus }) {
+  const steps = PHASES;
+  const activeIdx = Math.min(
+    steps.length - 1,
+    Math.floor((build.progress / 100) * steps.length),
+  );
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="relative flex size-2">
+            {!build.done && (
+              <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 animate-ping" />
+            )}
+            <span className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`} />
+          </span>
+          <span className="text-sm font-semibold">
+            {build.done ? (build.error ? "Build failed" : "Site ready") : "Building your site"}
+          </span>
+        </div>
+        <span className="text-xs font-mono text-muted-foreground tabular-nums">{build.progress}%</span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-primary via-primary to-primary/70 transition-[width] duration-500 ease-out"
+          style={{ width: `${build.progress}%` }}
+        />
+      </div>
+
+      {/* Phase list */}
+      <ul className="space-y-1.5 pt-1">
+        {steps.map((s, i) => {
+          const done = build.done ? !build.error : i < activeIdx;
+          const active = !build.done && i === activeIdx;
+          return (
+            <li key={s} className="flex items-center gap-2 text-xs">
+              <span className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+                {done ? <Check className="size-2.5" strokeWidth={3} /> : active ? (
+                  <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                ) : <span className="size-1 rounded-full bg-muted-foreground/40" />}
+              </span>
+              <span className={done ? "text-muted-foreground line-through decoration-muted-foreground/40" : active ? "text-foreground font-medium" : "text-muted-foreground"}>
+                {active ? `${s}…` : s}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {build.error && (
+        <p className="text-xs text-rose-foreground bg-rose/10 border border-rose/30 rounded-lg px-2.5 py-1.5">
+          {build.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Message({ msg }: { msg: Msg }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
@@ -357,21 +518,13 @@ function Message({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
   return (
     <div className="flex gap-3 animate-pop-in">
       <Avatar />
-      <div className="space-y-2 max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 min-w-[40px]">
-          {msg.content ? (
-            <>
-              <MessageContent text={msg.content} />
-              {streaming && <span className="ml-0.5 inline-block w-[2px] h-[1em] translate-y-1 bg-primary animate-blink rounded-sm" />}
-            </>
-          ) : (
-            <span className="inline-flex gap-0.5">
-              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "300ms" }} />
-            </span>
-          )}
-        </div>
+      <div className="space-y-2 max-w-[85%] w-full">
+        {msg.build && <BuildCard build={msg.build} />}
+        {msg.content && (
+          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5">
+            <MessageContent text={msg.content} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -380,14 +533,15 @@ function Message({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
 function PreviewCanvas({
   device,
   html,
-  generating,
+  build,
 }: {
   device: "mobile" | "tablet" | "desktop";
   html: string;
-  generating: boolean;
+  build: BuildStatus | null;
 }) {
   const widths = { mobile: "max-w-[380px]", tablet: "max-w-[820px]", desktop: "max-w-[1200px]" };
   const heights = { mobile: "h-[720px]", tablet: "h-[820px]", desktop: "h-[760px]" };
+  const generating = !!build && !build.done;
   return (
     <div className={`mx-auto w-full ${widths[device]} transition-all`}>
       <div className="rounded-3xl bg-card border border-border shadow-card overflow-hidden">
@@ -403,27 +557,38 @@ function PreviewCanvas({
           {generating && (
             <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-              Building…
+              {build?.phase} · {build?.progress}%
             </span>
           )}
         </div>
 
         {html ? (
-          <iframe
-            title="Generated preview"
-            srcDoc={html}
-            sandbox="allow-scripts"
-            className={`w-full ${heights[device]} bg-white`}
-          />
+          <div className="relative">
+            <iframe
+              title="Generated preview"
+              srcDoc={html}
+              sandbox="allow-scripts"
+              className={`w-full ${heights[device]} bg-white`}
+            />
+            {generating && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-[width] duration-500"
+                  style={{ width: `${build?.progress ?? 0}%` }}
+                />
+              </div>
+            )}
+          </div>
         ) : (
-          <EmptyPreview generating={generating} />
+          <EmptyPreview build={build} />
         )}
       </div>
     </div>
   );
 }
 
-function EmptyPreview({ generating }: { generating: boolean }) {
+function EmptyPreview({ build }: { build: BuildStatus | null }) {
+  const generating = !!build && !build.done;
   return (
     <div className="p-12 bg-gradient-hero relative min-h-[480px] grid place-items-center text-center">
       <div className="absolute inset-0 grain" />
@@ -432,13 +597,21 @@ function EmptyPreview({ generating }: { generating: boolean }) {
           <Sparkles className="size-6 text-ink" strokeWidth={2.5} />
         </div>
         <h2 className="font-display text-2xl font-bold">
-          {generating ? "Cooking up your site…" : "Tell Breezy what to build"}
+          {generating ? `${build?.phase}…` : "Tell Breezy what to build"}
         </h2>
         <p className="text-sm text-muted-foreground">
           {generating
-            ? "Drafting layout, copy and styling. This usually takes a few seconds."
+            ? "Designing your site live. The preview will appear as it builds."
             : "Send a message in the chat and a real, live website will appear right here."}
         </p>
+        {generating && (
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary transition-[width] duration-500"
+              style={{ width: `${build?.progress ?? 0}%` }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -461,4 +634,3 @@ function CodeView({ html }: { html: string }) {
     </div>
   );
 }
-
