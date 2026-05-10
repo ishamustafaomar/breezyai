@@ -262,7 +262,6 @@ function Comparison() {
   );
 }
 
-function Testimonials() {
   const quotes = [
     { q: "I shipped a full SaaS in a weekend. My designer cried (happy tears).", a: "Maya R.", role: "Founder, Lumen" },
     { q: "Breezy turned my chaotic ideas into something my team could actually use on Monday.", a: "Diego P.", role: "PM, Globex" },
