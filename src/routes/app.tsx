@@ -265,6 +265,25 @@ function BuilderApp() {
                 ))}
               </div>
             )}
+            {!busy && generatedHtml && messages.length > 1 && (
+              <div className="pt-1 flex flex-wrap gap-1.5">
+                {[
+                  "Make it darker and more premium",
+                  "Add a testimonials section",
+                  "Try a different color palette",
+                  "Make the hero more bold",
+                  "Add a pricing section",
+                ].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => send(s)}
+                    className="text-xs rounded-full border border-border bg-card hover:bg-muted px-3 py-1.5 transition text-muted-foreground hover:text-foreground"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="p-4 border-t border-border bg-background/60">
