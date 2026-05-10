@@ -195,16 +195,26 @@ function BuilderApp() {
       const decoder = new TextDecoder();
       let html = "";
       const TARGET = 22000;
+      patchBuild({ phase: "Generating the site" });
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
-        const pct = Math.min(95, Math.round((html.length / TARGET) * 95));
+        const pct = Math.min(96, Math.round((html.length / TARGET) * 96));
         patchBuild({ progress: pct });
       }
-      html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
-      if (!html.toLowerCase().startsWith("<!doctype") && !html.toLowerCase().startsWith("<html")) {
-        html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
+      html += decoder.decode();
+      patchBuild({ phase: "Verifying completion", progress: 98 });
+      const marker = html.match(COMPLETION_MARKER_RE);
+      const status = marker?.[1] ?? "missing-status";
+      html = html.replace(COMPLETION_MARKER_RE, "");
+      const inspected = inspectGeneratedHtml(html);
+      html = inspected.cleaned;
+      if (status !== "complete" || !inspected.complete) {
+        const error = "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
+        toast.error("Build was incomplete — not marked finished");
+        patchBuild({ done: true, error, progress: 98, phase: "Incomplete" });
+        return null;
       }
       setGeneratedHtml(html);
       // Push a new version
@@ -216,7 +226,7 @@ function BuilderApp() {
       };
       setVersions((prev) => [...prev, v]);
       setActiveVersionId(v.id);
-      patchBuild({ progress: 100, phase: "Ready", done: true });
+      patchBuild({ progress: 100, phase: "Finished and verified", done: true });
       return html;
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
