@@ -146,22 +146,33 @@ function BuilderApp() {
     phaseTimerRef.current = null;
   };
 
-  const generate = async (history: Msg[]) => {
+  const generate = async (history: Msg[], userPrompt: string) => {
     genAbortRef.current?.abort();
     const controller = new AbortController();
     genAbortRef.current = controller;
-    setGeneratedHtml("");
     startPhaseTicker();
 
-    try {
-      const resp = await fetch("/api/generate", {
+    const baseHtml = generatedHtml; // edit base — preserved if request fails
+
+    const doFetch = () =>
+      fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: history.map((m) => ({ role: m.role, content: m.content })),
+          currentHtml: baseHtml || undefined,
         }),
         signal: controller.signal,
       });
+
+    try {
+      let resp = await doFetch();
+      // Auto-retry once on 429 with a short backoff
+      if (resp.status === 429) {
+        patchBuild({ phase: "Rate-limited, retrying" });
+        await new Promise((r) => setTimeout(r, 4000));
+        resp = await doFetch();
+      }
       if (!resp.ok || !resp.body) {
         const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
         toast.error(error || "Generation failed");
@@ -172,9 +183,7 @@ function BuilderApp() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let html = "";
-      const TARGET = 22000; // bytes ≈ ~95%
-      // Don't update the iframe per chunk — it causes constant reloads and
-      // makes the final render feel laggy. Just track progress; render once on done.
+      const TARGET = 22000;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -182,12 +191,20 @@ function BuilderApp() {
         const pct = Math.min(95, Math.round((html.length / TARGET) * 95));
         patchBuild({ progress: pct });
       }
-      // Strip accidental fences just in case
       html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
       if (!html.toLowerCase().startsWith("<!doctype") && !html.toLowerCase().startsWith("<html")) {
         html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="https://cdn.tailwindcss.com"></script></head><body>${html}</body></html>`;
       }
       setGeneratedHtml(html);
+      // Push a new version
+      const v: Version = {
+        id: crypto.randomUUID(),
+        html,
+        prompt: userPrompt,
+        createdAt: Date.now(),
+      };
+      setVersions((prev) => [...prev, v]);
+      setActiveVersionId(v.id);
       patchBuild({ progress: 100, phase: "Ready", done: true });
       return html;
     } catch (e) {
