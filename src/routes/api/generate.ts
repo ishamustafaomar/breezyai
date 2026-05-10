@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/generate")({
       POST: async ({ request }) => {
         try {
           const { messages, currentHtml } = (await request.json()) as {
-            messages: { role: "user" | "assistant"; content: string }[];
+            messages: GatewayMessage[];
             currentHtml?: string;
           };
 
