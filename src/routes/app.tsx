@@ -55,6 +55,10 @@ const PHASES = [
   "Finalizing markup",
 ];
 
+type Version = { id: string; html: string; prompt: string; createdAt: number };
+
+const STORAGE_KEY = "breezy.project.v1";
+
 function BuilderApp() {
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
@@ -62,10 +66,53 @@ function BuilderApp() {
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
   const [generatedHtml, setGeneratedHtml] = useState<string>("");
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [projectName, setProjectName] = useState<string>("Untitled project");
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hydratedRef = useRef(false);
+
+  // Hydrate from localStorage on mount
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        messages?: Msg[]; versions?: Version[]; activeVersionId?: string; name?: string;
+      };
+      if (data.messages?.length) setMessages(data.messages);
+      if (data.versions?.length) {
+        setVersions(data.versions);
+        const active = data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
+        if (active) {
+          setActiveVersionId(active.id);
+          setGeneratedHtml(active.html);
+        }
+      }
+      if (data.name) setProjectName(data.name);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist on change
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ messages, versions, activeVersionId, name: projectName }),
+      );
+    } catch {
+      /* quota: ignore */
+    }
+  }, [messages, versions, activeVersionId, projectName]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
