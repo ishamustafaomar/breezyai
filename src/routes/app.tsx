@@ -65,15 +65,17 @@ const IDEAS = [
   "A SaaS pricing page",
 ];
 
-const PHASES = [
-  "Sketching the layout",
-  "Choosing a color palette",
-  "Writing the copy",
-  "Designing the hero",
-  "Wiring up sections",
-  "Polishing the details",
-  "Finalizing markup",
+const PHASES: { id: string; label: string; match?: RegExp }[] = [
+  { id: "think", label: "Thinking through the design" },
+  { id: "scaffold", label: "Scaffolding the document", match: /<body[\s>]/i },
+  { id: "theme", label: "Tuning the color palette", match: /tailwind\.config\s*=/i },
+  { id: "hero", label: "Designing the hero", match: /<(header|nav)[\s>]/i },
+  { id: "sections", label: "Building feature sections", match: /<section[\s>]/i },
+  { id: "polish", label: "Polishing details & motion", match: /testimonial|pricing|faq|cta/i },
+  { id: "finalize", label: "Finalizing markup", match: /<\/footer>/i },
+  { id: "verify", label: "Verifying completion", match: /<\/html>/i },
 ];
+const PHASE_LABELS = PHASES.map((p) => p.label);
 
 const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
 
@@ -87,6 +89,30 @@ function inspectGeneratedHtml(html: string) {
   const hasDocumentEnd = lower.endsWith("</html>");
   const hasBody = lower.includes("<body") && lower.includes("</body>");
   return { cleaned, complete: hasDocumentStart && hasDocumentEnd && hasBody };
+}
+
+// Build a previewable doc from a partial stream by closing open tags so the
+// iframe can render it live as it generates.
+function previewableHtml(partial: string): string {
+  const stripped = partial.replace(COMPLETION_MARKER_RE, "").trim();
+  if (!stripped) return "";
+  const cleaned = stripped.replace(/^```(?:html)?\s*/i, "");
+  const lower = cleaned.toLowerCase();
+  if (!lower.includes("<body")) return "";
+  if (lower.includes("</html>")) return cleaned;
+  const hasBodyClose = lower.includes("</body>");
+  return cleaned + (hasBodyClose ? "" : "\n</body>") + "\n</html>";
+}
+
+// Detect the highest-progress phase reached given the partial html.
+function detectPhase(html: string): number {
+  let idx = 0;
+  for (let i = 0; i < PHASES.length; i++) {
+    const p = PHASES[i];
+    if (!p.match) continue;
+    if (p.match.test(html)) idx = i;
+  }
+  return idx;
 }
 
 type Version = { id: string; html: string; prompt: string; createdAt: number };
