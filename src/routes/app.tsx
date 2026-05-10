@@ -236,7 +236,7 @@ function BuilderApp() {
     setBusy(true);
 
     // 1) Generate site (with live progress)
-    const html = await generate(next);
+    const html = await generate(next, trimmed);
 
     // 2) Brief chat summary AFTER build (so it doesn't ramble while building)
     if (html) {
