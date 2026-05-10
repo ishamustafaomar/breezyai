@@ -93,25 +93,6 @@ function Hero() {
   );
 }
 
-function LogoMarquee() {
-  const logos = ["Acme", "Lumen", "Northwind", "Globex", "Initech", "Pied Piper", "Soylent", "Hooli", "Massive Dynamic", "Wayne Ent."];
-  return (
-    <section className="border-y border-border/60 bg-card/40 py-8 overflow-hidden">
-      <p className="text-center text-xs uppercase tracking-widest text-muted-foreground mb-6">
-        Teams shipping with Breezy
-      </p>
-      <div className="relative">
-        <div className="flex gap-12 animate-marquee whitespace-nowrap">
-          {[...logos, ...logos].map((l, i) => (
-            <span key={i} className="font-display text-2xl font-semibold text-foreground/40 hover:text-foreground transition">
-              {l}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 const FEATURES = [
   { icon: Wand2, title: "Conversational builder", desc: "Type a thought, see it become real UI in seconds. No setup, no boilerplate.", tint: "bg-gradient-warm" },
