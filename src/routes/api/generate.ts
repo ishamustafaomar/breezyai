@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+type GatewayMessage = { role: "system" | "user" | "assistant"; content: string };
+
+const STATUS_PREFIX = "<!--BREEZY_GENERATION_STATUS:";
+const STATUS_SUFFIX = ":BREEZY_GENERATION_STATUS-->";
+
 const SYSTEM_PROMPT = `You are Breezy's site generator — an elite product designer + frontend engineer. You output ONE complete, self-contained HTML5 document for a single-page website that looks like it was built by a top design studio (think Linear, Vercel, Stripe, Apple).
 
 OUTPUT RULES (strict):
@@ -25,7 +30,9 @@ DESIGN BAR (this is the most important part):
 - Responsive (mobile-first). Looks great at 380px, 820px, and 1200px wide.
 - Accessibility: semantic tags, aria-labels on icon buttons, alt-equivalent on decorative SVGs (aria-hidden), good contrast.
 
-Aim for ~600-1000 lines of polished HTML. Quality over brevity. Make it feel premium.`;
+Do not over-expand. Finish the entire document every time. A complete, polished 350-650 line document is better than an unfinished 1000-line draft.
+
+Aim for a complete premium site that never cuts off mid-section. Quality and completeness over length.`;
 
 export const Route = createFileRoute("/api/generate")({
   server: {
@@ -33,7 +40,7 @@ export const Route = createFileRoute("/api/generate")({
       POST: async ({ request }) => {
         try {
           const { messages, currentHtml } = (await request.json()) as {
-            messages: { role: "user" | "assistant"; content: string }[];
+            messages: GatewayMessage[];
             currentHtml?: string;
           };
 
@@ -48,42 +55,42 @@ export const Route = createFileRoute("/api/generate")({
           const isEdit = !!(currentHtml && currentHtml.length > 200);
           const finalUserPrompt = isEdit
             ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
-            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, ~600-1000 lines. HTML only, no fences.";
+            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
 
-          const upstream = await fetch(
-            "https://ai.gateway.lovable.dev/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "openai/gpt-5",
-                stream: true,
-                max_completion_tokens: 16000,
-                messages: [
-                  { role: "system", content: SYSTEM_PROMPT },
-                  ...messages,
-                  { role: "user", content: finalUserPrompt },
-                ],
-              }),
+          const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
             },
-          );
+            body: JSON.stringify({
+              model: "openai/gpt-5",
+              stream: true,
+              max_completion_tokens: 16000,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                ...messages,
+                { role: "user", content: finalUserPrompt },
+              ],
+            }),
+          });
 
           if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
               return new Response(JSON.stringify({ error: "Rate limited — try again shortly." }), {
-                status: 429, headers: { "Content-Type": "application/json" },
+                status: 429,
+                headers: { "Content-Type": "application/json" },
               });
             if (upstream.status === 402)
               return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-                status: 402, headers: { "Content-Type": "application/json" },
+                status: 402,
+                headers: { "Content-Type": "application/json" },
               });
             const t = await upstream.text().catch(() => "");
             console.error("generate gateway error:", upstream.status, t);
             return new Response(JSON.stringify({ error: "AI gateway error" }), {
-              status: 500, headers: { "Content-Type": "application/json" },
+              status: 500,
+              headers: { "Content-Type": "application/json" },
             });
           }
 
@@ -92,11 +99,44 @@ export const Route = createFileRoute("/api/generate")({
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
           let buf = "";
+          let finishReason = "";
+          let emittedContent = false;
+
+          const processSseLine = (
+            line: string,
+            controller: ReadableStreamDefaultController<Uint8Array>,
+          ) => {
+            const t = line.trim();
+            if (!t.startsWith("data:")) return false;
+            const payload = t.slice(5).trim();
+            if (payload === "[DONE]") return true;
+            try {
+              const json = JSON.parse(payload);
+              const choice = json.choices?.[0];
+              if (choice?.finish_reason) finishReason = choice.finish_reason;
+              const delta = choice?.delta?.content;
+              if (delta) {
+                emittedContent = true;
+                controller.enqueue(encoder.encode(delta));
+              }
+            } catch {
+              /* ignore malformed stream fragments */
+            }
+            return false;
+          };
+
+          const enqueueStatus = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+            const complete = emittedContent && (!finishReason || finishReason === "stop");
+            const status = complete ? "complete" : `incomplete:${finishReason || "no-content"}`;
+            controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
+          };
 
           const stream = new ReadableStream({
             async pull(controller) {
               const { value, done } = await reader.read();
               if (done) {
+                if (buf.trim()) processSseLine(buf, controller);
+                enqueueStatus(controller);
                 controller.close();
                 return;
               }
@@ -104,17 +144,7 @@ export const Route = createFileRoute("/api/generate")({
               const lines = buf.split("\n");
               buf = lines.pop() ?? "";
               for (const line of lines) {
-                const t = line.trim();
-                if (!t.startsWith("data:")) continue;
-                const payload = t.slice(5).trim();
-                if (payload === "[DONE]") continue;
-                try {
-                  const json = JSON.parse(payload);
-                  const delta = json.choices?.[0]?.delta?.content;
-                  if (delta) controller.enqueue(encoder.encode(delta));
-                } catch {
-                  /* ignore */
-                }
+                processSseLine(line, controller);
               }
             },
             cancel() {
