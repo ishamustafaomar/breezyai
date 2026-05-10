@@ -262,34 +262,6 @@ function Comparison() {
   );
 }
 
-  const quotes = [
-    { q: "I shipped a full SaaS in a weekend. My designer cried (happy tears).", a: "Maya R.", role: "Founder, Lumen" },
-    { q: "Breezy turned my chaotic ideas into something my team could actually use on Monday.", a: "Diego P.", role: "PM, Globex" },
-    { q: "It's the first AI tool that doesn't make my apps look like 2014.", a: "Sasha K.", role: "Indie maker" },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-5 py-24">
-      <div className="grid md:grid-cols-3 gap-5">
-        {quotes.map((t, i) => (
-          <div
-            key={i}
-            className="rounded-3xl bg-card border border-border p-7 shadow-soft hover:shadow-card transition-all relative"
-          >
-            <Heart className="absolute top-6 right-6 size-5 text-rose fill-rose/30" />
-            <p className="font-display text-lg leading-snug mb-6">"{t.q}"</p>
-            <div className="flex items-center gap-3">
-              <div className={`size-10 rounded-full ${["bg-peach", "bg-mint", "bg-lavender"][i]}`} />
-              <div>
-                <p className="text-sm font-semibold">{t.a}</p>
-                <p className="text-xs text-muted-foreground">{t.role}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function PricingTeaser() {
   return (
