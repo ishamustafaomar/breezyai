@@ -642,10 +642,56 @@ function BuilderApp() {
               >
                 <ExternalLink className="size-3.5" /> Open
               </button>
-              <button className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted">
+              <button
+                disabled={!generatedHtml}
+                onClick={async () => {
+                  try {
+                    const dataUrl =
+                      "data:text/html;charset=utf-8;base64," +
+                      btoa(
+                        unescape(encodeURIComponent(generatedHtml)),
+                      );
+                    if (navigator.share) {
+                      await navigator.share({
+                        title: projectName,
+                        text: "Check out what I made with Breezy",
+                        url: dataUrl,
+                      }).catch(() => {});
+                    } else {
+                      await navigator.clipboard.writeText(dataUrl);
+                      toast.success("Share link copied — paste it anywhere");
+                    }
+                  } catch {
+                    toast.error("Couldn't create a share link");
+                  }
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
+                title="Copy a self-contained share link"
+              >
                 <Share2 className="size-3.5" /> Share
               </button>
-              <button className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition">
+              <button
+                disabled={!generatedHtml}
+                onClick={async () => {
+                  try {
+                    const blob = new Blob([generatedHtml], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                    const dataUrl =
+                      "data:text/html;charset=utf-8;base64," +
+                      btoa(unescape(encodeURIComponent(generatedHtml)));
+                    await navigator.clipboard.writeText(dataUrl).catch(() => {});
+                    toast.success("Site opened in a new tab — share link copied", {
+                      description: "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
+                    });
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                  } catch {
+                    toast.error("Couldn't publish the preview");
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition disabled:opacity-40"
+                title="Open the site and copy a share link"
+              >
                 <Rocket className="size-3.5" /> Publish
               </button>
             </div>
