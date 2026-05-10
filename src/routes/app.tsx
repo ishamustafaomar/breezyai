@@ -329,7 +329,7 @@ function BuilderApp() {
     const buildMsg: Msg = {
       role: "assistant",
       content: "",
-      build: { phase: PHASES[0], progress: 3, done: false },
+      build: { phase: PHASE_LABELS[0], progress: 3, done: false },
     };
     const next = [...messages, userMsg];
     setMessages([...next, buildMsg]);
