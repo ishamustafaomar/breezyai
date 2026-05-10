@@ -41,8 +41,11 @@ function BuilderApp() {
   const [streaming, setStreaming] = useState(false);
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
+  const [generatedHtml, setGeneratedHtml] = useState<string>("");
+  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const genAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
