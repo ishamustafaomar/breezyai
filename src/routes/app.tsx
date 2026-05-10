@@ -257,7 +257,9 @@ function BuilderApp() {
           </div>
 
           <div className="flex-1 overflow-auto p-6 bg-gradient-to-br from-muted/30 via-background to-muted/30">
-            {view === "preview" ? <PreviewCanvas device={device} /> : <CodeView />}
+            {view === "preview"
+              ? <PreviewCanvas device={device} html={generatedHtml} generating={generating} />
+              : <CodeView html={generatedHtml} />}
           </div>
         </section>
       </div>
