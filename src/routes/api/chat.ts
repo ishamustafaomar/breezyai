@@ -36,7 +36,7 @@ export const Route = createFileRoute("/api/chat")({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "google/gemini-3-flash-preview",
+                model: "openai/gpt-5-mini",
                 stream: true,
                 messages: [
                   { role: "system", content: SYSTEM_PROMPT },
