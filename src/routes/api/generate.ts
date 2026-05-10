@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+type GatewayMessage = { role: "system" | "user" | "assistant"; content: string };
+
+const STATUS_PREFIX = "<!--BREEZY_GENERATION_STATUS:";
+const STATUS_SUFFIX = ":BREEZY_GENERATION_STATUS-->";
+
 const SYSTEM_PROMPT = `You are Breezy's site generator — an elite product designer + frontend engineer. You output ONE complete, self-contained HTML5 document for a single-page website that looks like it was built by a top design studio (think Linear, Vercel, Stripe, Apple).
 
 OUTPUT RULES (strict):
