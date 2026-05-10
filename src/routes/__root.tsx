@@ -82,8 +82,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Breezy — Vibe-code beautiful apps in minutes" },
       { name: "twitter:description", content: "Breezy is the friendliest AI builder for shipping web apps. Describe it, see it, ship it." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/809872e7-d22a-4ff0-b4ec-8c7c5e163cde" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/809872e7-d22a-4ff0-b4ec-8c7c5e163cde" },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/0349a539-534b-441e-a523-082fb0ac70d8" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/0349a539-534b-441e-a523-082fb0ac70d8" },
     ],
     links: [
       {
