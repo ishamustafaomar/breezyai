@@ -74,10 +74,10 @@ function Hero() {
               <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              to="/showcase"
+              to="/pricing"
               className="inline-flex items-center gap-2 rounded-full bg-card border border-border px-6 py-3.5 font-semibold hover:bg-muted transition"
             >
-              See what people built
+              See pricing
             </Link>
           </div>
 
