@@ -139,7 +139,7 @@ function BuilderApp() {
               <span className="text-sm font-semibold">Conversation</span>
             </div>
             <button
-              onClick={() => { stop(); setMessages(STARTER); }}
+              onClick={() => { stop(); setMessages(STARTER); setGeneratedHtml(""); }}
               className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
             >
               <Plus className="size-3.5" /> New
