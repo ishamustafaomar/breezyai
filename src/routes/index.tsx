@@ -27,7 +27,7 @@ function Landing() {
         <Hero />
         <Features />
         <HowItWorks />
-        <ShowcasePreview />
+        
         <Comparison />
         <PricingTeaser />
         <FinalCTA />
