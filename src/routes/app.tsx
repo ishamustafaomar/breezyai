@@ -55,6 +55,17 @@ const PHASES = [
   "Finalizing markup",
 ];
 
+const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
+
+function inspectGeneratedHtml(html: string) {
+  const cleaned = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const lower = cleaned.toLowerCase();
+  const hasDocumentStart = lower.startsWith("<!doctype") || lower.startsWith("<html");
+  const hasDocumentEnd = lower.endsWith("</html>");
+  const hasBody = lower.includes("<body") && lower.includes("</body>");
+  return { cleaned, complete: hasDocumentStart && hasDocumentEnd && hasBody };
+}
+
 type Version = { id: string; html: string; prompt: string; createdAt: number };
 
 const STORAGE_KEY = "breezy.project.v1";
