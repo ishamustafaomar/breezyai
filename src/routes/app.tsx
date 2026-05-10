@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
+import { toast } from "sonner";
 import {
   Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
-  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Wand2, Check,
+  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square,
 } from "lucide-react";
+import { streamChat } from "@/lib/chat-stream";
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/app")({
   head: () => ({
@@ -15,10 +18,14 @@ export const Route = createFileRoute("/app")({
   component: BuilderApp,
 });
 
-type Msg = { role: "user" | "ai"; text: string; tags?: string[] };
+type Msg = { role: "user" | "assistant"; content: string };
 
 const STARTER: Msg[] = [
-  { role: "ai", text: "Welcome to Breezy ✨ Tell me what you'd like to build, or pick an idea below to get started." },
+  {
+    role: "assistant",
+    content:
+      "Hey! I'm **Breezy** ✨ Tell me what you want to build — even a half-baked idea is great. I'll sketch it out and we can shape it together.",
+  },
 ];
 
 const IDEAS = [
@@ -31,35 +38,60 @@ const IDEAS = [
 function BuilderApp() {
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, sending]);
+  }, [messages, streaming]);
 
-  const send = (text: string) => {
-    if (!text.trim() || sending) return;
-    setMessages((m) => [...m, { role: "user", text }]);
+  const send = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || streaming) return;
+
+    const userMsg: Msg = { role: "user", content: trimmed };
+    const next = [...messages, userMsg];
+    setMessages([...next, { role: "assistant", content: "" }]);
     setInput("");
-    setSending(true);
-    setTimeout(() => {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "ai",
-          text: "Got it — I built a first version. Check the preview! Want me to adjust the colors, add a feature, or hook up the database?",
-          tags: ["Layout", "Hero section", "Features grid", "Color palette", "Responsive"],
-        },
-      ]);
-      setSending(false);
-    }, 1400);
+    setStreaming(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    let acc = "";
+    await streamChat({
+      messages: next,
+      signal: controller.signal,
+      onDelta: (chunk) => {
+        acc += chunk;
+        setMessages((prev) => {
+          const copy = prev.slice();
+          copy[copy.length - 1] = { role: "assistant", content: acc };
+          return copy;
+        });
+      },
+      onError: (err) => {
+        toast.error(err);
+        setMessages((prev) => prev.slice(0, -1));
+      },
+      onDone: () => {},
+    });
+    setStreaming(false);
+    abortRef.current = null;
+  };
+
+  const stop = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
   };
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <Toaster position="top-center" />
       <BuilderTopBar />
       <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
         {/* Chat */}
@@ -69,34 +101,24 @@ function BuilderApp() {
               <Layers className="size-4 text-muted-foreground" />
               <span className="text-sm font-semibold">Conversation</span>
             </div>
-            <button className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <button
+              onClick={() => { stop(); setMessages(STARTER); }}
+              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+            >
               <Plus className="size-3.5" /> New
             </button>
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
-              <Message key={i} msg={m} />
+              <Message key={i} msg={m} streaming={streaming && i === messages.length - 1 && m.role === "assistant"} />
             ))}
-            {sending && (
-              <div className="flex gap-3">
-                <Avatar />
-                <div className="rounded-2xl rounded-tl-sm bg-gradient-rainbow bg-[length:200%_100%] animate-shimmer px-4 py-3 text-sm">
-                  <span className="font-medium">Thinking</span>
-                  <span className="inline-flex gap-0.5 ml-1">
-                    <span className="size-1 rounded-full bg-ink animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="size-1 rounded-full bg-ink animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="size-1 rounded-full bg-ink animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </span>
-                </div>
-              </div>
-            )}
-            {messages.length === 1 && (
+            {messages.length === 1 && !streaming && (
               <div className="pt-2 grid gap-2">
                 {IDEAS.map((idea) => (
                   <button
                     key={idea}
-                    onClick={() => send(idea)}
+                    onClick={() => send(`I want to build ${idea}.`)}
                     className="text-left text-sm rounded-2xl border border-border bg-card hover:bg-muted px-4 py-3 transition flex items-center justify-between group"
                   >
                     <span>{idea}</span>
@@ -122,19 +144,31 @@ function BuilderApp() {
                   }
                 }}
                 rows={1}
-                placeholder="Describe a change…"
+                placeholder={streaming ? "Breezy is replying…" : "Describe a change…"}
                 className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
               />
-              <button
-                type="submit"
-                disabled={!input.trim() || sending}
-                className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition disabled:opacity-40 disabled:scale-100"
-              >
-                <ArrowUp className="size-4" strokeWidth={2.5} />
-              </button>
+              {streaming ? (
+                <button
+                  type="button"
+                  onClick={stop}
+                  className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition"
+                  aria-label="Stop"
+                >
+                  <Square className="size-3.5 fill-cream" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition disabled:opacity-40 disabled:scale-100"
+                  aria-label="Send"
+                >
+                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                </button>
+              )}
             </form>
             <p className="text-[11px] text-muted-foreground mt-2 px-1">
-              Shift + Enter for new line · Breezy may make mistakes
+              Shift + Enter for new line · Powered by Lovable AI
             </p>
           </div>
         </aside>
@@ -230,11 +264,54 @@ function Avatar() {
   );
 }
 
-function Message({ msg }: { msg: Msg }) {
+/** Tiny markdown-ish renderer: **bold**, `code`, bullets, line breaks. No deps. */
+function renderInline(text: string) {
+  const parts: (string | ReactNode)[] = [];
+  let i = 0;
+  let key = 0;
+  const re = /(\*\*([^*]+)\*\*|`([^`]+)`)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > i) parts.push(text.slice(i, m.index));
+    if (m[2]) parts.push(<strong key={key++}>{m[2]}</strong>);
+    else if (m[3]) parts.push(<code key={key++} className="px-1 py-0.5 rounded bg-card text-[12px] font-mono">{m[3]}</code>);
+    i = m.index + m[0].length;
+  }
+  if (i < text.length) parts.push(text.slice(i));
+  return parts;
+}
+
+function MessageContent({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const out: ReactNode[] = [];
+  let bullets: string[] = [];
+  const flushBullets = (k: number) => {
+    if (!bullets.length) return;
+    out.push(
+      <ul key={`u${k}`} className="list-disc pl-5 space-y-1">
+        {bullets.map((b, i) => <li key={i}>{renderInline(b)}</li>)}
+      </ul>,
+    );
+    bullets = [];
+  };
+  lines.forEach((line, idx) => {
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    if (bullet) {
+      bullets.push(bullet[1]);
+    } else {
+      flushBullets(idx);
+      if (line.trim()) out.push(<p key={idx}>{renderInline(line)}</p>);
+    }
+  });
+  flushBullets(999);
+  return <div className="space-y-2 text-sm leading-relaxed">{out}</div>;
+}
+
+function Message({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
-        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.text}</div>
+        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.content}</div>
       </div>
     );
   }
@@ -242,16 +319,20 @@ function Message({ msg }: { msg: Msg }) {
     <div className="flex gap-3 animate-pop-in">
       <Avatar />
       <div className="space-y-2 max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm">{msg.text}</div>
-        {msg.tags && (
-          <div className="flex flex-wrap gap-1.5">
-            {msg.tags.map((t) => (
-              <span key={t} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-card border border-border">
-                <Check className="size-3 text-primary" strokeWidth={3} /> {t}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 min-w-[40px]">
+          {msg.content ? (
+            <>
+              <MessageContent text={msg.content} />
+              {streaming && <span className="ml-0.5 inline-block w-[2px] h-[1em] translate-y-1 bg-primary animate-blink rounded-sm" />}
+            </>
+          ) : (
+            <span className="inline-flex gap-0.5">
+              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="size-1.5 rounded-full bg-ink/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -271,7 +352,6 @@ function PreviewCanvas({ device }: { device: "mobile" | "tablet" | "desktop" }) 
           <div className="ml-3 text-xs text-muted-foreground font-mono">untitled.breezy.app</div>
         </div>
 
-        {/* Mock generated app */}
         <div className="p-8 sm:p-12 bg-gradient-hero relative">
           <div className="absolute inset-0 grain" />
           <div className="relative">
