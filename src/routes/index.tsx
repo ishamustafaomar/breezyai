@@ -3,8 +3,8 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroChatMock } from "@/components/hero-chat-mock";
 import {
-  Sparkles, Wand2, Layers, Zap, Code2, Palette, Globe, MessageSquareHeart,
-  Database, ShieldCheck, Rocket, ArrowRight, Star, Heart, Check,
+  Sparkles, Wand2, Zap, Code2, Palette, Globe, MessageSquareHeart,
+  Database, ShieldCheck, Rocket, ArrowRight, Check,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
