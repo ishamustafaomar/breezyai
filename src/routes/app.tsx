@@ -41,12 +41,43 @@ function BuilderApp() {
   const [streaming, setStreaming] = useState(false);
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
+  const [generatedHtml, setGeneratedHtml] = useState<string>("");
+  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const genAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streaming]);
+
+  const generate = async (history: Msg[]) => {
+    genAbortRef.current?.abort();
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+    setGenerating(true);
+    try {
+      const resp = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
+        toast.error(error || "Generation failed");
+        return;
+      }
+      const { html } = (await resp.json()) as { html: string };
+      if (html) setGeneratedHtml(html);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        toast.error((e as Error).message || "Generation failed");
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -60,6 +91,9 @@ function BuilderApp() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Kick off real site generation in parallel with the chat reply.
+    generate(next);
 
     let acc = "";
     await streamChat({
@@ -86,7 +120,10 @@ function BuilderApp() {
   const stop = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    genAbortRef.current?.abort();
+    genAbortRef.current = null;
     setStreaming(false);
+    setGenerating(false);
   };
 
   return (
@@ -102,7 +139,7 @@ function BuilderApp() {
               <span className="text-sm font-semibold">Conversation</span>
             </div>
             <button
-              onClick={() => { stop(); setMessages(STARTER); }}
+              onClick={() => { stop(); setMessages(STARTER); setGeneratedHtml(""); }}
               className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
             >
               <Plus className="size-3.5" /> New
@@ -220,7 +257,9 @@ function BuilderApp() {
           </div>
 
           <div className="flex-1 overflow-auto p-6 bg-gradient-to-br from-muted/30 via-background to-muted/30">
-            {view === "preview" ? <PreviewCanvas device={device} /> : <CodeView />}
+            {view === "preview"
+              ? <PreviewCanvas device={device} html={generatedHtml} generating={generating} />
+              : <CodeView html={generatedHtml} />}
           </div>
         </section>
       </div>
@@ -338,8 +377,17 @@ function Message({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
   );
 }
 
-function PreviewCanvas({ device }: { device: "mobile" | "tablet" | "desktop" }) {
+function PreviewCanvas({
+  device,
+  html,
+  generating,
+}: {
+  device: "mobile" | "tablet" | "desktop";
+  html: string;
+  generating: boolean;
+}) {
   const widths = { mobile: "max-w-[380px]", tablet: "max-w-[820px]", desktop: "max-w-[1200px]" };
+  const heights = { mobile: "h-[720px]", tablet: "h-[820px]", desktop: "h-[760px]" };
   return (
     <div className={`mx-auto w-full ${widths[device]} transition-all`}>
       <div className="rounded-3xl bg-card border border-border shadow-card overflow-hidden">
@@ -349,94 +397,68 @@ function PreviewCanvas({ device }: { device: "mobile" | "tablet" | "desktop" }) 
             <span className="size-2.5 rounded-full bg-butter" />
             <span className="size-2.5 rounded-full bg-mint" />
           </div>
-          <div className="ml-3 text-xs text-muted-foreground font-mono">untitled.breezy.app</div>
-        </div>
-
-        <div className="p-8 sm:p-12 bg-gradient-hero relative">
-          <div className="absolute inset-0 grain" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-card/80 backdrop-blur px-3 py-1 text-[11px] font-medium border border-border mb-5">
-              <span className="size-1.5 rounded-full bg-mint" /> Now serving calm
-            </div>
-            <h1 className="font-display text-3xl sm:text-5xl font-bold tracking-tight max-w-md leading-[1.05]">
-              Find your<br />
-              <span className="bg-gradient-warm bg-clip-text text-transparent">moment of stillness</span>.
-            </h1>
-            <p className="text-sm text-muted-foreground max-w-sm mt-4">
-              Breath by breath, day by day. A meditation companion that meets you where you are.
-            </p>
-            <div className="flex gap-2 mt-6">
-              <button className="rounded-full bg-ink text-cream px-5 py-2.5 text-sm font-semibold">Begin</button>
-              <button className="rounded-full bg-card border border-border px-5 py-2.5 text-sm font-semibold">Listen</button>
-            </div>
+          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">
+            untitled.breezy.app
           </div>
+          {generating && (
+            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+              Building…
+            </span>
+          )}
         </div>
 
-        <div className="p-6 sm:p-10 grid sm:grid-cols-3 gap-3 bg-card">
-          {[
-            { t: "Daily breath", c: "bg-gradient-fresh" },
-            { t: "Sleep stories", c: "bg-gradient-cool" },
-            { t: "Focus timers", c: "bg-gradient-warm" },
-          ].map((f) => (
-            <div key={f.t} className="rounded-2xl border border-border p-4 bg-card shadow-soft">
-              <div className={`size-10 rounded-xl ${f.c} mb-3`} />
-              <p className="font-display font-semibold">{f.t}</p>
-              <p className="text-xs text-muted-foreground mt-1">A short blurb that explains the lovely thing.</p>
-            </div>
-          ))}
-        </div>
+        {html ? (
+          <iframe
+            title="Generated preview"
+            srcDoc={html}
+            sandbox="allow-scripts"
+            className={`w-full ${heights[device]} bg-white`}
+          />
+        ) : (
+          <EmptyPreview generating={generating} />
+        )}
       </div>
     </div>
   );
 }
 
-function CodeView() {
-  const files = [
-    { n: "src/routes/index.tsx", active: true },
-    { n: "src/components/hero.tsx" },
-    { n: "src/components/feature-grid.tsx" },
-    { n: "src/styles.css" },
-  ];
+function EmptyPreview({ generating }: { generating: boolean }) {
+  return (
+    <div className="p-12 bg-gradient-hero relative min-h-[480px] grid place-items-center text-center">
+      <div className="absolute inset-0 grain" />
+      <div className="relative max-w-sm space-y-4">
+        <div className="mx-auto size-14 rounded-2xl bg-gradient-warm grid place-items-center shadow-soft">
+          <Sparkles className="size-6 text-ink" strokeWidth={2.5} />
+        </div>
+        <h2 className="font-display text-2xl font-bold">
+          {generating ? "Cooking up your site…" : "Tell Breezy what to build"}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {generating
+            ? "Drafting layout, copy and styling. This usually takes a few seconds."
+            : "Send a message in the chat and a real, live website will appear right here."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CodeView({ html }: { html: string }) {
+  const code = html || "<!-- Send a message to Breezy and the generated HTML will appear here. -->";
   return (
     <div className="mx-auto max-w-5xl rounded-3xl border border-border bg-ink text-cream shadow-card overflow-hidden grid grid-cols-[200px_1fr] min-h-[500px]">
       <div className="border-r border-white/10 p-3 text-xs">
         <p className="px-2 py-1.5 text-cream/50 uppercase tracking-wider">Files</p>
-        {files.map((f) => (
-          <div
-            key={f.n}
-            className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer ${f.active ? "bg-white/10" : "hover:bg-white/5 text-cream/70"}`}
-          >
-            <FileCode2 className="size-3.5 shrink-0" />
-            <span className="truncate">{f.n}</span>
-          </div>
-        ))}
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/10">
+          <FileCode2 className="size-3.5 shrink-0" />
+          <span className="truncate">index.html</span>
+        </div>
       </div>
-      <pre className="p-5 text-[12.5px] font-mono leading-relaxed overflow-auto">
-{`import { createFileRoute } from "@tanstack/react-router";
-import { Hero } from "@/components/hero";
-import { FeatureGrid } from "@/components/feature-grid";
-
-export const Route = createFileRoute("/")({
-  component: HomePage,
-});
-
-function HomePage() {
-  return (
-    <main className="min-h-screen bg-gradient-hero">
-      <Hero
-        eyebrow="Now serving calm"
-        title="Find your moment of stillness"
-        cta="Begin"
-      />
-      <FeatureGrid items={[
-        { title: "Daily breath", color: "fresh" },
-        { title: "Sleep stories", color: "cool" },
-        { title: "Focus timers", color: "warm" },
-      ]} />
-    </main>
-  );
-}`}
+      <pre className="p-5 text-[12.5px] font-mono leading-relaxed overflow-auto whitespace-pre-wrap break-words">
+        {code}
       </pre>
     </div>
   );
 }
+
