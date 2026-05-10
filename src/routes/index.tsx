@@ -81,21 +81,9 @@ function Hero() {
             </Link>
           </div>
 
-          <div className="flex items-center gap-4 pt-4">
-            <div className="flex -space-x-2">
-              {["bg-peach", "bg-mint", "bg-sky", "bg-lavender", "bg-butter"].map((c) => (
-                <div key={c} className={`size-8 rounded-full ${c} border-2 border-background`} />
-              ))}
-            </div>
-            <div className="text-sm">
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="size-3.5 fill-primary text-primary" />
-                ))}
-                <span className="font-semibold ml-1">4.9</span>
-              </div>
-              <p className="text-xs text-muted-foreground">Loved by 240,000+ makers</p>
-            </div>
+          <div className="flex items-center gap-3 pt-4 text-sm text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-mint animate-pulse" />
+            Live streaming previews — see your site appear as it's typed.
           </div>
         </div>
 
