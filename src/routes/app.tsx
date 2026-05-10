@@ -545,7 +545,15 @@ function BuilderApp() {
   );
 }
 
-function BuilderTopBar() {
+function BuilderTopBar({
+  projectName,
+  setProjectName,
+  versionCount,
+}: {
+  projectName: string;
+  setProjectName: (n: string) => void;
+  versionCount: number;
+}) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -560,9 +568,15 @@ function BuilderTopBar() {
       </Link>
       <div className="size-6 w-px bg-border" />
       <input
-        defaultValue="Untitled project"
+        value={projectName}
+        onChange={(e) => setProjectName(e.target.value)}
         className="bg-transparent text-sm font-medium outline-none focus:bg-muted px-2 py-1 rounded-md max-w-[220px]"
       />
+      {versionCount > 0 && (
+        <span className="text-[11px] text-muted-foreground font-mono px-1.5 py-0.5 rounded bg-muted">
+          v{versionCount}
+        </span>
+      )}
       <div className="ml-auto flex items-center gap-2">
         <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Auto-saved
