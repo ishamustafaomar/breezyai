@@ -9,18 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ShowcaseRouteImport } from './routes/showcase'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 
-const ShowcaseRoute = ShowcaseRouteImport.update({
-  id: '/showcase',
-  path: '/showcase',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -51,7 +45,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/pricing': typeof PricingRoute
-  '/showcase': typeof ShowcaseRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
 }
@@ -59,7 +52,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/pricing': typeof PricingRoute
-  '/showcase': typeof ShowcaseRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
 }
@@ -68,49 +60,27 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/pricing': typeof PricingRoute
-  '/showcase': typeof ShowcaseRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/app'
-    | '/pricing'
-    | '/showcase'
-    | '/api/chat'
-    | '/api/generate'
+  fullPaths: '/' | '/app' | '/pricing' | '/api/chat' | '/api/generate'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/pricing' | '/showcase' | '/api/chat' | '/api/generate'
-  id:
-    | '__root__'
-    | '/'
-    | '/app'
-    | '/pricing'
-    | '/showcase'
-    | '/api/chat'
-    | '/api/generate'
+  to: '/' | '/app' | '/pricing' | '/api/chat' | '/api/generate'
+  id: '__root__' | '/' | '/app' | '/pricing' | '/api/chat' | '/api/generate'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRoute
   PricingRoute: typeof PricingRoute
-  ShowcaseRoute: typeof ShowcaseRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/showcase': {
-      id: '/showcase'
-      path: '/showcase'
-      fullPath: '/showcase'
-      preLoaderRoute: typeof ShowcaseRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -153,10 +123,19 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRoute,
   PricingRoute: PricingRoute,
-  ShowcaseRoute: ShowcaseRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGenerateRoute: ApiGenerateRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
