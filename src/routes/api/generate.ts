@@ -76,9 +76,10 @@ export const Route = createFileRoute("/api/generate")({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "openai/gpt-5-mini",
+                model: "openai/gpt-5",
                 stream: true,
-                max_completion_tokens: 32000,
+                max_completion_tokens: 48000,
+                reasoning: { effort: "medium" },
                 messages: msgs,
               }),
             });
