@@ -124,14 +124,13 @@ function BuilderApp() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let html = "";
-      const TARGET = 18000; // bytes ≈ ~95%
+      const TARGET = 22000; // bytes ≈ ~95%
+      // Don't update the iframe per chunk — it causes constant reloads and
+      // makes the final render feel laggy. Just track progress; render once on done.
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        html += chunk;
-        // Live-update preview as HTML streams in
-        setGeneratedHtml(html);
+        html += decoder.decode(value, { stream: true });
         const pct = Math.min(95, Math.round((html.length / TARGET) * 95));
         patchBuild({ progress: pct });
       }
