@@ -74,7 +74,6 @@ export const Route = createFileRoute("/api/generate")({
                 model: "openai/gpt-5-mini",
                 stream: true,
                 max_completion_tokens: 32000,
-                reasoning: { effort: "minimal" },
                 messages: msgs,
               }),
             });
