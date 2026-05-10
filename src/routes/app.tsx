@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
@@ -266,7 +266,7 @@ function Avatar() {
 
 /** Tiny markdown-ish renderer: **bold**, `code`, bullets, line breaks. No deps. */
 function renderInline(text: string) {
-  const parts: (string | JSX.Element)[] = [];
+  const parts: (string | ReactNode)[] = [];
   let i = 0;
   let key = 0;
   const re = /(\*\*([^*]+)\*\*|`([^`]+)`)/g;
@@ -283,7 +283,7 @@ function renderInline(text: string) {
 
 function MessageContent({ text }: { text: string }) {
   const lines = text.split("\n");
-  const out: JSX.Element[] = [];
+  const out: ReactNode[] = [];
   let bullets: string[] = [];
   const flushBullets = (k: number) => {
     if (!bullets.length) return;
