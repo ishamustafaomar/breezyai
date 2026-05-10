@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Sparkles, ArrowUp, Code2, Eye, Smartphone, Monitor, Tablet,
-  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square, Check,
+  Layers, Plus, Share2, Rocket, ChevronLeft, FileCode2, Square, Check, Copy, Download,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
