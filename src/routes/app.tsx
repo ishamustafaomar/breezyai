@@ -512,6 +512,19 @@ function BuilderApp() {
               >
                 <Download className="size-3.5" /> Download
               </button>
+              <button
+                disabled={!generatedHtml}
+                onClick={() => {
+                  const blob = new Blob([generatedHtml], { type: "text/html" });
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, "_blank");
+                  setTimeout(() => URL.revokeObjectURL(url), 30000);
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
+                title="Open in new tab"
+              >
+                <ExternalLink className="size-3.5" /> Open
+              </button>
               <button className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted">
                 <Share2 className="size-3.5" /> Share
               </button>
