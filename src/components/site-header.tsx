@@ -13,9 +13,6 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-          <Link to="/showcase" className="px-3 py-2 rounded-lg hover:bg-muted transition-colors" activeProps={{ className: "text-primary" }}>
-            Showcase
-          </Link>
           <Link to="/pricing" className="px-3 py-2 rounded-lg hover:bg-muted transition-colors" activeProps={{ className: "text-primary" }}>
             Pricing
           </Link>

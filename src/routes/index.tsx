@@ -27,7 +27,7 @@ function Landing() {
         <Hero />
         <Features />
         <HowItWorks />
-        <ShowcasePreview />
+        
         <Comparison />
         <PricingTeaser />
         <FinalCTA />
@@ -74,10 +74,10 @@ function Hero() {
               <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              to="/showcase"
+              to="/pricing"
               className="inline-flex items-center gap-2 rounded-full bg-card border border-border px-6 py-3.5 font-semibold hover:bg-muted transition"
             >
-              See what people built
+              See pricing
             </Link>
           </div>
 
@@ -170,58 +170,6 @@ function HowItWorks() {
   );
 }
 
-function ShowcasePreview() {
-  const cards = [
-    { title: "Sunday Recipes", tag: "Food app", color: "bg-gradient-warm" },
-    { title: "Stoic Daily", tag: "Journaling", color: "bg-gradient-cool" },
-    { title: "Sprout", tag: "Plant care", color: "bg-gradient-fresh" },
-    { title: "Loop Fitness", tag: "Workouts", color: "bg-gradient-rainbow" },
-  ];
-  return (
-    <section className="mx-auto max-w-7xl px-5 py-24">
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-        <div className="max-w-xl">
-          <p className="text-sm font-semibold text-primary mb-3 uppercase tracking-wider">Showcase</p>
-          <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-tight">
-            Built in an afternoon.<br />Loved every day.
-          </h2>
-        </div>
-        <Link to="/showcase" className="inline-flex items-center gap-1.5 text-sm font-semibold hover:text-primary">
-          Browse the gallery <ArrowRight className="size-4" />
-        </Link>
-      </div>
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {cards.map((c, i) => (
-          <div
-            key={c.title}
-            className="group relative aspect-[3/4] rounded-3xl overflow-hidden border border-border shadow-soft hover:shadow-card hover:-translate-y-1 transition-all"
-          >
-            <div className={`absolute inset-0 ${c.color}`} />
-            <div className="absolute inset-0 grain" />
-            <div
-              className="absolute inset-x-6 top-12 bottom-20 rounded-2xl bg-card/90 backdrop-blur shadow-soft p-4 flex flex-col gap-2 group-hover:translate-y-[-4px] transition-transform"
-              style={{ transform: `rotate(${(i % 2 === 0 ? -1 : 1) * 2}deg)` }}
-            >
-              <div className="h-3 w-3/5 rounded-full bg-muted" />
-              <div className="h-3 w-2/5 rounded-full bg-muted" />
-              <div className="mt-2 h-12 rounded-xl bg-gradient-fresh" />
-              <div className="grid grid-cols-3 gap-1.5 mt-1">
-                <div className="h-8 rounded-lg bg-muted" />
-                <div className="h-8 rounded-lg bg-muted" />
-                <div className="h-8 rounded-lg bg-muted" />
-              </div>
-            </div>
-            <div className="absolute bottom-0 inset-x-0 p-5 bg-gradient-to-t from-ink/70 to-transparent text-cream">
-              <p className="text-xs uppercase tracking-wider opacity-80">{c.tag}</p>
-              <p className="font-display text-xl font-semibold">{c.title}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function Comparison() {
   const rows = [
