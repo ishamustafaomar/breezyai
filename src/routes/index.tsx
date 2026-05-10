@@ -25,12 +25,10 @@ function Landing() {
       <SiteHeader />
       <main className="flex-1">
         <Hero />
-        <LogoMarquee />
         <Features />
         <HowItWorks />
         <ShowcasePreview />
         <Comparison />
-        <Testimonials />
         <PricingTeaser />
         <FinalCTA />
       </main>
