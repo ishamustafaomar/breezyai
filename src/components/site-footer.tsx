@@ -27,20 +27,10 @@ export function SiteFooter() {
           </ul>
         </div>
 
-        <div>
-          <p className="text-sm font-semibold mb-3">Company</p>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li><a href="#" className="hover:text-foreground">About</a></li>
-            <li><a href="#" className="hover:text-foreground">Blog</a></li>
-            <li><a href="#" className="hover:text-foreground">Careers</a></li>
-            <li><a href="#" className="hover:text-foreground">Contact</a></li>
-          </ul>
-        </div>
       </div>
       <div className="border-t border-border/60">
-        <div className="mx-auto max-w-7xl px-5 py-6 flex flex-col sm:flex-row gap-3 items-center justify-between text-xs text-muted-foreground">
-          <p>© 2026 Breezy Labs. Made with sunshine.</p>
-          <p>Privacy · Terms · Cookies</p>
+        <div className="mx-auto max-w-7xl px-5 py-6 text-xs text-muted-foreground text-center">
+          © 2026 Breezy. Made with sunshine.
         </div>
       </div>
     </footer>
