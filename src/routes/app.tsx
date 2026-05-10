@@ -146,7 +146,7 @@ function BuilderApp() {
 
   const startPhaseTicker = () => {
     let idx = 0;
-    phaseTimerRef.current && clearInterval(phaseTimerRef.current);
+    if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
     phaseTimerRef.current = setInterval(() => {
       idx = Math.min(idx + 1, PHASES.length - 1);
       patchBuild({ phase: PHASES[idx] });
