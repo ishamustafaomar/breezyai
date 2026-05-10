@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Github, Twitter } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export function SiteFooter() {
   return (
@@ -15,14 +15,6 @@ export function SiteFooter() {
           <p className="mt-4 max-w-sm text-sm text-muted-foreground">
             The friendliest way to vibe-code beautiful apps. Speak it, see it, ship it.
           </p>
-          <div className="mt-5 flex gap-2">
-            <a href="#" className="size-9 rounded-full grid place-items-center bg-card border border-border hover:bg-muted transition-colors">
-              <Twitter className="size-4" />
-            </a>
-            <a href="#" className="size-9 rounded-full grid place-items-center bg-card border border-border hover:bg-muted transition-colors">
-              <Github className="size-4" />
-            </a>
-          </div>
         </div>
 
         <div>
