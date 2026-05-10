@@ -57,23 +57,29 @@ export const Route = createFileRoute("/api/generate")({
             ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
             : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
 
-          const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "openai/gpt-5",
-              stream: true,
-              max_completion_tokens: 16000,
-              messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                ...messages,
-                { role: "user", content: finalUserPrompt },
-              ],
-            }),
-          });
+          const baseMessages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...messages,
+            { role: "user", content: finalUserPrompt },
+          ];
+
+          const callGateway = (msgs: typeof baseMessages) =>
+            fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "openai/gpt-5-mini",
+                stream: true,
+                max_completion_tokens: 32000,
+                reasoning: { effort: "minimal" },
+                messages: msgs,
+              }),
+            });
+
+          const upstream = await callGateway(baseMessages);
 
           if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
@@ -95,60 +101,97 @@ export const Route = createFileRoute("/api/generate")({
           }
 
           // Re-stream as a simple text stream of raw HTML deltas to the client.
-          const reader = upstream.body.getReader();
+          // Auto-continue if the model hits the token cap before closing </html>.
           const decoder = new TextDecoder();
           const encoder = new TextEncoder();
-          let buf = "";
-          let finishReason = "";
+          let emittedAll = "";
           let emittedContent = false;
-
-          const processSseLine = (
-            line: string,
-            controller: ReadableStreamDefaultController<Uint8Array>,
-          ) => {
-            const t = line.trim();
-            if (!t.startsWith("data:")) return false;
-            const payload = t.slice(5).trim();
-            if (payload === "[DONE]") return true;
-            try {
-              const json = JSON.parse(payload);
-              const choice = json.choices?.[0];
-              if (choice?.finish_reason) finishReason = choice.finish_reason;
-              const delta = choice?.delta?.content;
-              if (delta) {
-                emittedContent = true;
-                controller.enqueue(encoder.encode(delta));
-              }
-            } catch {
-              /* ignore malformed stream fragments */
-            }
-            return false;
-          };
-
-          const enqueueStatus = (controller: ReadableStreamDefaultController<Uint8Array>) => {
-            const complete = emittedContent && (!finishReason || finishReason === "stop");
-            const status = complete ? "complete" : `incomplete:${finishReason || "no-content"}`;
-            controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
-          };
+          let lastFinishReason = "";
 
           const stream = new ReadableStream({
-            async pull(controller) {
-              const { value, done } = await reader.read();
-              if (done) {
-                if (buf.trim()) processSseLine(buf, controller);
-                enqueueStatus(controller);
+            async start(controller) {
+              const consume = async (resp: Response) => {
+                const reader = resp.body!.getReader();
+                let buf = "";
+                let finishReason = "";
+
+                const processLine = (line: string) => {
+                  const t = line.trim();
+                  if (!t.startsWith("data:")) return;
+                  const payload = t.slice(5).trim();
+                  if (!payload || payload === "[DONE]") return;
+                  try {
+                    const json = JSON.parse(payload);
+                    const choice = json.choices?.[0];
+                    if (choice?.finish_reason) finishReason = choice.finish_reason;
+                    const delta = choice?.delta?.content;
+                    if (delta) {
+                      emittedContent = true;
+                      emittedAll += delta;
+                      controller.enqueue(encoder.encode(delta));
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                };
+
+                while (true) {
+                  const { value, done } = await reader.read();
+                  if (done) {
+                    if (buf.trim()) processLine(buf);
+                    break;
+                  }
+                  buf += decoder.decode(value, { stream: true });
+                  const lines = buf.split("\n");
+                  buf = lines.pop() ?? "";
+                  for (const line of lines) processLine(line);
+                }
+                return finishReason;
+              };
+
+              try {
+                lastFinishReason = await consume(upstream);
+
+                // Auto-continue up to 3 times if we hit length cap without finishing the doc.
+                let attempts = 0;
+                while (
+                  attempts < 3 &&
+                  lastFinishReason === "length" &&
+                  !emittedAll.toLowerCase().includes("</html>")
+                ) {
+                  attempts++;
+                  const continueMessages = [
+                    { role: "system" as const, content: SYSTEM_PROMPT },
+                    ...messages,
+                    { role: "user" as const, content: finalUserPrompt },
+                    { role: "assistant" as const, content: emittedAll },
+                    {
+                      role: "user" as const,
+                      content:
+                        "Continue the HTML document EXACTLY where you left off. Do not repeat any prior content, do not add commentary or fences. Output only the remaining HTML and end with </html>.",
+                    },
+                  ];
+                  const next = await callGateway(continueMessages);
+                  if (!next.ok || !next.body) break;
+                  lastFinishReason = await consume(next);
+                }
+
+                const complete =
+                  emittedContent &&
+                  emittedAll.toLowerCase().includes("</html>") &&
+                  (lastFinishReason === "" || lastFinishReason === "stop");
+                const status = complete
+                  ? "complete"
+                  : `incomplete:${lastFinishReason || "no-content"}`;
+                controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
                 controller.close();
-                return;
+              } catch (err) {
+                console.error("generate stream error:", err);
+                controller.enqueue(
+                  encoder.encode(`${STATUS_PREFIX}incomplete:stream-error${STATUS_SUFFIX}`),
+                );
+                controller.close();
               }
-              buf += decoder.decode(value, { stream: true });
-              const lines = buf.split("\n");
-              buf = lines.pop() ?? "";
-              for (const line of lines) {
-                processSseLine(line, controller);
-              }
-            },
-            cancel() {
-              reader.cancel().catch(() => {});
             },
           });
 
