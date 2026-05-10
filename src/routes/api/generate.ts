@@ -32,8 +32,9 @@ export const Route = createFileRoute("/api/generate")({
     handlers: {
       POST: async ({ request }) => {
         try {
-          const { messages } = (await request.json()) as {
+          const { messages, currentHtml } = (await request.json()) as {
             messages: { role: "user" | "assistant"; content: string }[];
+            currentHtml?: string;
           };
 
           const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
@@ -43,6 +44,11 @@ export const Route = createFileRoute("/api/generate")({
               { status: 500, headers: { "Content-Type": "application/json" } },
             );
           }
+
+          const isEdit = !!(currentHtml && currentHtml.length > 200);
+          const finalUserPrompt = isEdit
+            ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
+            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, ~600-1000 lines. HTML only, no fences.";
 
           const upstream = await fetch(
             "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -59,11 +65,7 @@ export const Route = createFileRoute("/api/generate")({
                 messages: [
                   { role: "system", content: SYSTEM_PROMPT },
                   ...messages,
-                  {
-                    role: "user",
-                    content:
-                      "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, ~600-1000 lines. HTML only, no fences.",
-                  },
+                  { role: "user", content: finalUserPrompt },
                 ],
               }),
             },
