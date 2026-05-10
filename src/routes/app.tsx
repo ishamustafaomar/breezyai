@@ -801,10 +801,11 @@ function BuildCard({ build }: { build: BuildStatus }) {
       {/* Phase list */}
       <ul className="space-y-1.5 pt-1">
         {steps.map((s, i) => {
+          const label = s.label;
           const done = build.done ? !build.error : i < activeIdx;
           const active = !build.done && i === activeIdx;
           return (
-            <li key={s} className="flex items-center gap-2 text-xs">
+            <li key={s.id} className="flex items-center gap-2 text-xs">
               <span
                 className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
               >
@@ -825,7 +826,7 @@ function BuildCard({ build }: { build: BuildStatus }) {
                       : "text-muted-foreground"
                 }
               >
-                {active ? `${s}…` : s}
+                {active ? `${label}…` : label}
               </span>
             </li>
           );
