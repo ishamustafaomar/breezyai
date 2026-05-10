@@ -295,7 +295,11 @@ function BuilderApp() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar />
+      <BuilderTopBar
+        projectName={projectName}
+        setProjectName={setProjectName}
+        versionCount={versions.length}
+      />
       <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
         {/* Chat */}
         <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
@@ -304,13 +308,62 @@ function BuilderApp() {
               <Layers className="size-4 text-muted-foreground" />
               <span className="text-sm font-semibold">Conversation</span>
             </div>
-            <button
-              onClick={() => { stop(); setMessages(STARTER); setGeneratedHtml(""); }}
-              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-            >
-              <Plus className="size-3.5" /> New
-            </button>
+            <div className="flex items-center gap-1">
+              {versions.length > 0 && (
+                <button
+                  onClick={() => setShowHistory((s) => !s)}
+                  className={`text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full transition ${showHistory ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  title="Version history"
+                >
+                  <History className="size-3.5" /> v{versions.length}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  stop();
+                  setMessages(STARTER);
+                  setGeneratedHtml("");
+                  setVersions([]);
+                  setActiveVersionId(null);
+                  setShowHistory(false);
+                  setProjectName("Untitled project");
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
+              >
+                <Plus className="size-3.5" /> New
+              </button>
+            </div>
           </div>
+
+          {showHistory && versions.length > 0 && (
+            <div className="border-b border-border bg-background/60 max-h-56 overflow-y-auto p-3 space-y-1.5">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">Versions</p>
+              {versions.slice().reverse().map((v, idx) => {
+                const realIdx = versions.length - idx;
+                const active = v.id === activeVersionId;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => {
+                      setGeneratedHtml(v.html);
+                      setActiveVersionId(v.id);
+                      toast.success(`Restored version ${realIdx}`);
+                    }}
+                    className={`w-full text-left rounded-xl border px-3 py-2 transition flex items-center gap-2 ${active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"}`}
+                  >
+                    <div className={`size-6 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      v{realIdx}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleTimeString()}</p>
+                    </div>
+                    {active ? <Check className="size-3.5 text-primary shrink-0" /> : <RotateCcw className="size-3 text-muted-foreground shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
