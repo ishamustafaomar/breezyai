@@ -57,23 +57,29 @@ export const Route = createFileRoute("/api/generate")({
             ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
             : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
 
-          const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "openai/gpt-5",
-              stream: true,
-              max_completion_tokens: 16000,
-              messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                ...messages,
-                { role: "user", content: finalUserPrompt },
-              ],
-            }),
-          });
+          const baseMessages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...messages,
+            { role: "user", content: finalUserPrompt },
+          ];
+
+          const callGateway = (msgs: typeof baseMessages) =>
+            fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "openai/gpt-5-mini",
+                stream: true,
+                max_completion_tokens: 32000,
+                reasoning: { effort: "minimal" },
+                messages: msgs,
+              }),
+            });
+
+          const upstream = await callGateway(baseMessages);
 
           if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
