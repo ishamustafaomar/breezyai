@@ -202,9 +202,9 @@ function BuilderApp() {
     let idx = 0;
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
     phaseTimerRef.current = setInterval(() => {
-      idx = Math.min(idx + 1, PHASES.length - 1);
-      patchBuild({ phase: PHASES[idx] });
-    }, 2800);
+      idx = Math.min(idx + 1, 1); // gently nudge to "scaffolding" while waiting on first tokens
+      patchBuild({ phase: PHASE_LABELS[idx] });
+    }, 1800);
   };
   const stopPhaseTicker = () => {
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
@@ -254,15 +254,33 @@ function BuilderApp() {
       const decoder = new TextDecoder();
       let html = "";
       const TARGET = 22000;
-      patchBuild({ phase: "Generating the site" });
+      let lastPreviewLen = 0;
+      patchBuild({ phase: PHASE_LABELS[1] });
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
-        const pct = Math.min(96, Math.round((html.length / TARGET) * 96));
-        patchBuild({ progress: pct });
+
+        // Drive phase from actual content, not a timer
+        const phaseIdx = detectPhase(html);
+        const phaseLabel = PHASE_LABELS[phaseIdx];
+        const lenPct = Math.round((html.length / TARGET) * 96);
+        const phasePct = Math.round(((phaseIdx + 1) / PHASES.length) * 92);
+        const pct = Math.min(96, Math.max(lenPct, phasePct));
+        patchBuild({ progress: pct, phase: phaseLabel });
+
+        // Live preview: as soon as we have a renderable body, push it.
+        // Throttle to roughly every 600 chars to avoid iframe thrash.
+        if (html.length - lastPreviewLen > 600) {
+          const live = previewableHtml(html);
+          if (live) {
+            setGeneratedHtml(live);
+            lastPreviewLen = html.length;
+          }
+        }
       }
       html += decoder.decode();
+      stopPhaseTicker();
       patchBuild({ phase: "Verifying completion", progress: 98 });
       const marker = html.match(COMPLETION_MARKER_RE);
       const status = marker?.[1] ?? "missing-status";
@@ -270,9 +288,11 @@ function BuilderApp() {
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
+        // Roll back to base so we don't leave a half-rendered preview.
+        setGeneratedHtml(baseHtml);
         const error =
           "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
-        toast.error("Build was incomplete — not marked finished");
+        toast.error("Build was incomplete — kept the previous version");
         patchBuild({ done: true, error, progress: 98, phase: "Incomplete" });
         return null;
       }
