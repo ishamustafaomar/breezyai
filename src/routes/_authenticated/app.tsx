@@ -26,7 +26,7 @@ import {
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 
-export const Route = createFileRoute("/app")({
+export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
     meta: [
       { title: "Breezy Builder — Your AI dev studio" },
