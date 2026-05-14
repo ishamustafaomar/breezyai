@@ -30,6 +30,17 @@ DESIGN BAR — this is what matters most:
 - Responsive mobile-first. Test mentally at 380px, 768px, 1200px, 1440px. Nav collapses to a hamburger or simplified row on mobile.
 - Accessibility: semantic landmarks (header/nav/main/section/footer), aria-labels on icon-only buttons, aria-hidden on decorative SVG, sufficient contrast, visible focus rings.
 
+INTERACTIVITY (CRITICAL — generated sites have NO backend):
+- The page runs as a sandboxed static HTML document. There is NO server, NO API, NO database, NO real auth provider. Any fetch() / XHR / WebSocket / form POST to an external URL WILL fail with "Failed to fetch" — DO NOT make network calls.
+- If the design includes sign-in, sign-up, login, logout, "get started", waitlist, contact form, newsletter, comments, save/like, cart, or any other interactive form: implement it ENTIRELY client-side in a <script> at the end of <body>.
+  - Use localStorage as the "database" (e.g. localStorage.getItem('breezy_users'), 'breezy_session', 'breezy_waitlist').
+  - On submit: e.preventDefault(), validate inputs inline, store to localStorage, then update the UI in place (swap to a "Welcome, {name}" state, show an inline success toast/banner, close a modal, etc.). Never reload, never navigate to an external URL, never call fetch().
+  - Sign-in / sign-up: store {email, name, passwordHash:btoa(password)} in localStorage. On sign-in, look up the user and "log them in" by setting a session key + updating the nav (hide Sign in, show avatar/initial + Sign out). Sign out clears the session key.
+  - Social buttons ("Continue with Google/Apple/GitHub"): treat as a mock — just create a fake session with a placeholder email and update the UI. Do NOT link to real OAuth URLs.
+  - Forms must always have type="button" or e.preventDefault() — never let a form submit to its default action.
+- All in-page interactivity (mobile menu toggle, FAQ accordion, tab switchers, modal open/close, theme toggle, copy-to-clipboard) must be wired up with vanilla JS in the same closing <script>. No frameworks, no CDN JS libs other than Tailwind.
+- Keep the script self-contained, defensive (guard every querySelector with a null check), and wrapped in an IIFE or DOMContentLoaded listener.
+
 QUALITY GATES (self-check before finishing):
 1. Could this be on the homepage of a YC-backed startup? If no, raise the bar.
 2. Is there at least ONE custom hero visual that isn't just text + a button?
