@@ -5,59 +5,93 @@ type GatewayMessage = { role: "system" | "user" | "assistant"; content: string }
 const STATUS_PREFIX = "<!--BREEZY_GENERATION_STATUS:";
 const STATUS_SUFFIX = ":BREEZY_GENERATION_STATUS-->";
 
-/** ~28k chars for chat turns; leaves room for system prompt + currentHtml + completion. */
+/** Chat-turn budget; reduced when currentHtml is large to avoid context overflow. */
 const MAX_CONTEXT_CHARS = 28_000;
+const MAX_CONTEXT_CHARS_WITH_HTML = 10_000;
+const MAX_CURRENT_HTML_CHARS = 48_000;
 const KEEP_RECENT_MESSAGES = 12;
 
-const SYSTEM_PROMPT = `You are Breezy's site generator — a senior product designer and frontend engineer. Ship studio-quality, fully responsive marketing pages and simple web apps that look like they came from a funded startup (Linear, Vercel, Stripe tier), not an AI template.
+const SYSTEM_PROMPT = `You are Breezy's site generator — a senior product designer and frontend engineer. Ship studio-quality, fully responsive marketing pages that look like a funded startup (Linear, Vercel, Stripe tier), not an AI template.
 
 ═══ OUTPUT FORMAT (non-negotiable) ═══
-- Return ONLY raw HTML. No markdown, no code fences (\`\`\`), no preamble, no explanation before or after.
-- Start with <!DOCTYPE html> and end with </html>. Every tag must be properly closed.
-- Always include in <head>:
-  • <meta charset="UTF-8">
-  • <meta name="viewport" content="width=device-width, initial-scale=1">
-  • A specific <title> and <meta name="description" content="…">
-  • <script src="https://cdn.tailwindcss.com"></script> (required — never omit)
-  • Immediately after: <script>tailwind.config = { theme: { extend: { … } } }</script> with real tokens
-- Use Google Fonts with preconnect for a display + body pairing wired into tailwind.config fontFamily.
+- Return ONLY raw HTML. No markdown, no code fences (\`\`\`), no preamble, no explanation.
+- Start with <!DOCTYPE html>, end with </html>. Every tag properly closed.
+- <head> must include: charset, viewport meta, title, description, <script src="https://cdn.tailwindcss.com"></script>, tailwind.config script, Google Fonts preconnect, and a rich <style> block (see below).
+- Enable class-based dark mode: tailwind.config must include darkMode: 'class'.
 
-═══ TAILWIND CSS (strict usage) ═══
-- Use Tailwind utility classes for ALL layout, spacing, color, and typography. Avoid one-off inline styles except rare cases (e.g. complex gradients).
-- Mobile-first breakpoints: base styles for 320–480px, then sm:, md:, lg:, xl: as needed.
-- Consistent spacing scale: prefer gap-*, space-y-*, p-6/p-8/p-12/p-16/p-20, max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 on sections.
-- Cohesive color palette via tailwind.config extend.colors — 1 brand accent, 1 secondary, neutral ramp (zinc/stone/slate). Never default blue-500 + gray-900.
-- Typography hierarchy: one display treatment for h1/h2 (tracking-tight, text-4xl sm:text-5xl md:text-6xl lg:text-7xl on hero), body text-base/text-lg with text-muted tones (e.g. text-zinc-500), consistent font weights.
-- Cards: rounded-2xl/3xl, borders, shadows, hover: transitions. Buttons: rounded-xl, focus-visible:ring-2 focus-visible:ring-offset-2.
+═══ COLOR PALETTE (:root scale — required) ═══
+- In <style>, define a full brand scale as CSS custom properties: --brand-50 through --brand-900 (cohesive hue).
+- Wire these into tailwind.config extend.colors as brand-50…brand-900.
+- Use consistently: brand-600 for primary CTAs, brand-50 for tinted section backgrounds, brand-900 for headings.
+- Never use arbitrary inline hex colors — only the brand scale + Tailwind neutrals.
+
+═══ TYPOGRAPHY RHYTHM (strict scale) ═══
+- Hero headlines: text-5xl sm:text-6xl md:text-7xl (one display size per breakpoint).
+- Section headings: text-3xl md:text-4xl. Subheadings: text-2xl.
+- Body: text-base or text-lg with leading-relaxed (line-height ~1.7) always.
+- Paragraphs: max-w-prose mx-auto where appropriate. Subheadings: mt-12 mb-4. Never cramped body copy.
+
+═══ STICKY NAV WITH BLUR (required) ═══
+- Navbar: sticky top-0 z-50 backdrop-blur-md bg-white/70 dark:bg-gray-900/70 border-b border-gray-200/50 dark:border-gray-800/50.
+- Moon/sun toggle in nav toggles class="dark" on <html>.
+- Default theme from system: if(window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark')
+- Scroll listener: after window.scrollY > 50, add a shadow class (e.g. shadow-md) to the nav; remove below 50.
+
+═══ DARK MODE (required) ═══
+- Full dark: variant support via Tailwind dark: classes on all major surfaces, text, borders, cards, nav, footer.
+- Persist optional: localStorage theme key + respect system preference on first load.
+
+═══ SCROLL ANIMATIONS (required) ═══
+- Every section below the hero gets class="reveal" for scroll-reveal.
+- In <style> include:
+  .reveal { opacity:0; transform:translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease }
+  .reveal.visible { opacity:1; transform:none }
+- In closing <script>, always use Intersection Observer:
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible') })
+  }, { threshold: 0.15 })
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el))
+
+═══ SVG HERO ILLUSTRATIONS (required — no blob placeholders) ═══
+- Never use simple geometric gradient blobs as the hero visual.
+- Always build a detailed, layered inline SVG hero: 8–12+ distinct path/group elements, line-art or isometric style, topic-related shapes, depth layers, subtle drop shadows via SVG filters (<filter> feDropShadow).
+- Alternatively (or additionally) use realistic photos: https://images.unsplash.com/photo-[relevant-id]?w=800&q=80 with topic-appropriate Unsplash IDs, object-cover on containers. Never colored blob placeholders.
+
+═══ BENTO GRID (required for features) ═══
+- Replace generic 3-column cards with a bento layout: CSS grid grid-template-columns: repeat(12, 1fr) with mixed spans — e.g. col-span-7 + col-span-5, then col-span-4 × 3.
+- Each cell: unique background tint (brand-50/100), icon, heading, 1–2 line description.
+
+═══ SOCIAL PROOF / TESTIMONIALS (required) ═══
+- Grid of at least 3 testimonial cards: colored avatar circles with initials, realistic full names + company names (never "John Doe"), 5-star inline SVG ratings, <blockquote> formatting.
+
+═══ RICH FOOTER (required) ═══
+- Never a thin one-line footer. Always: 4 columns (Product, Company, Resources, Newsletter signup), social icons (X/Twitter, GitHub, LinkedIn) as inline SVGs, copyright, tagline, subtle top border.
+
+═══ MICRO-INTERACTIONS (required classes) ═══
+- Buttons: hover:-translate-y-0.5 hover:shadow-lg active:scale-95 transition-all duration-150
+- Cards: hover:-translate-y-1 hover:shadow-xl transition-all duration-200
+- Links: underline-offset-4 hover:underline transition
+- Icons: hover:scale-110 transition-transform
+
+═══ JAVASCRIPT (required in one closing <script>) ═══
+- Intersection Observer scroll-reveal (above).
+- Animated stat counters: count from 0 to target when element enters viewport (Intersection Observer).
+- Smooth anchor scroll: document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); document.querySelector(a.getAttribute('href'))?.scrollIntoView({behavior:'smooth'}) }))
+- Mobile menu: slide-down with max-height transition (not instant display toggle).
+- Tab switcher with animated underline indicator on the active tab.
+- Dark mode toggle + nav scroll shadow (above).
+- No fetch/XHR/real OAuth. Forms: localStorage + e.preventDefault(). Null-safe querySelectors, IIFE or DOMContentLoaded.
 
 ═══ RESPONSIVE & ACCESSIBLE HTML ═══
-- Semantic landmarks: <header>, <nav>, <main>, <section> with aria-labelledby or visible headings, <footer>.
-- One <h1> per page; logical heading order. aria-label on icon-only controls; aria-hidden on decorative SVGs.
-- Sufficient color contrast. Visible focus states. Nav collapses to mobile menu (hamburger) below md:.
-- Test layout at 380px, 768px, 1280px — no horizontal overflow, readable type, tappable targets (min ~44px).
-
-═══ DESIGN QUALITY ═══
-- Pick ONE intentional aesthetic matching the user's idea; commit fully.
-- Hero: strong headline, subhead, dual CTAs, trust element, custom visual (CSS/SVG mock UI, blobs — no external images).
-- 6–9 sections as appropriate: nav, hero, logos/features/bento, social proof, pricing/FAQ, CTA, footer.
-- Copy: specific, on-brand, zero lorem ipsum. Inline 24×24 stroke SVG icons (consistent style).
-- Imagery: CSS gradients, div-built UIs, inline SVG only — NO unsplash, placeholder.com, or hotlinked images.
+- Semantic landmarks, one <h1>, aria-labels on icon buttons, mobile hamburger nav, contrast + focus rings.
+- Mobile-first: 380px, 768px, 1280px — no horizontal overflow.
 
 ═══ EDIT MODE (when current HTML is provided) ═══
-- You are PATCHING an existing page, not starting over.
-- Read the full conversation to understand what the user wants changed.
-- Modify ONLY the sections, components, classes, or copy relevant to the request.
-- Preserve everything else: structure, IDs, class naming patterns, palette, fonts, unrelated sections, and working scripts.
-- If they say "darker", "add pricing", "fix hero" — touch only that scope; merge changes into the existing document.
-- Output the COMPLETE updated HTML document (entire file), not a fragment.
-
-═══ INTERACTIVITY (static sandbox — no backend) ═══
-- No fetch(), XHR, WebSocket, or real OAuth. Forms/auth/waitlist: vanilla JS + localStorage at end of <body>, e.preventDefault(), UI updates in place.
-- Mobile menu, FAQ <details>, modals, tabs: wire in one self-contained <script> (IIFE or DOMContentLoaded), null-safe querySelectors.
+- PATCH surgically — modify only what the user asked; preserve palette, scripts, unrelated sections.
+- Output the COMPLETE updated document.
 
 ═══ BEFORE YOU FINISH ═══
-1. Tailwind CDN present in <head>? 2. All tags closed? 3. Mobile-first responsive? 4. Edit preserved unrelated content?
-5. Ends with </body></html>. Quality over brevity — deliver a complete, polished document.`;
+Tailwind CDN, :root brand scale, dark mode, sticky blur nav, reveal animations, bento grid, 3+ testimonials, rich footer, hero SVG or Unsplash, all JS wired, </html> closed.`;
 
 function sanitizeMessages(messages: GatewayMessage[]): GatewayMessage[] {
   return messages
@@ -79,10 +113,16 @@ function charTotal(messages: GatewayMessage[]): number {
   return messages.reduce((n, m) => n + m.content.length, 0);
 }
 
+function truncateCurrentHtml(html: string): string {
+  if (html.length <= MAX_CURRENT_HTML_CHARS) return html;
+  return `${html.slice(0, MAX_CURRENT_HTML_CHARS)}\n<!-- HTML truncated for context; preserve structure when editing -->`;
+}
+
 /** Trim or condense history so follow-up edits retain intent without blowing the context window. */
-function prepareConversationHistory(messages: GatewayMessage[]): GatewayMessage[] {
+function prepareConversationHistory(messages: GatewayMessage[], currentHtmlLen = 0): GatewayMessage[] {
   const sanitized = sanitizeMessages(messages);
-  if (charTotal(sanitized) <= MAX_CONTEXT_CHARS) return sanitized;
+  const budget = currentHtmlLen > 12_000 ? MAX_CONTEXT_CHARS_WITH_HTML : MAX_CONTEXT_CHARS;
+  if (charTotal(sanitized) <= budget) return sanitized;
 
   const firstUserIdx = sanitized.findIndex((m) => m.role === "user");
   const anchor = firstUserIdx >= 0 ? sanitized[firstUserIdx] : sanitized[0];
@@ -102,11 +142,11 @@ function prepareConversationHistory(messages: GatewayMessage[]): GatewayMessage[
     if (m !== anchor) condensed.push(m);
   }
 
-  if (charTotal(condensed) <= MAX_CONTEXT_CHARS) return condensed;
+  if (charTotal(condensed) <= budget) return condensed;
 
   // Still too large — progressively shorten oldest non-anchor content
   const trimmed = [...condensed];
-  while (charTotal(trimmed) > MAX_CONTEXT_CHARS && trimmed.length > 3) {
+  while (charTotal(trimmed) > budget && trimmed.length > 3) {
     const idx = trimmed.findIndex((m, i) => i > 0 && m.role === "assistant" && m.content.length > 400);
     if (idx === -1) break;
     const m = trimmed[idx];
@@ -137,9 +177,10 @@ export const Route = createFileRoute("/api/generate")({
           }
 
           const isEdit = !!(currentHtml && currentHtml.length > 200);
-          const conversation = prepareConversationHistory(messages ?? []);
+          const htmlForPrompt = currentHtml ? truncateCurrentHtml(currentHtml) : undefined;
+          const conversation = prepareConversationHistory(messages ?? [], htmlForPrompt?.length ?? 0);
           const finalUserPrompt = isEdit
-            ? `CURRENT SITE HTML — apply a surgical edit; do NOT rewrite the whole page unless the user explicitly asked for a full redesign:\n\n${currentHtml}\n\nInstructions:
+            ? `CURRENT SITE HTML — apply a surgical edit; do NOT rewrite the whole page unless the user explicitly asked for a full redesign:\n\n${htmlForPrompt}\n\nInstructions:
 - Use the conversation above to understand exactly what to change.
 - Modify ONLY the relevant sections, styles, or copy. Keep all unrelated markup, classes, scripts, and structure intact.
 - Output the full updated HTML document. Raw HTML only — no markdown, no code fences, no commentary.`
@@ -163,7 +204,7 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
               body: JSON.stringify({
                 model: "openai/gpt-5",
                 stream: true,
-                max_completion_tokens: 48000,
+                max_completion_tokens: 16000,
                 messages: msgs,
               }),
             });
@@ -197,14 +238,34 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
           let emittedContent = false;
           let lastFinishReason = "";
 
+          let streamClosed = false;
+
+          const closeStream = (controller: ReadableStreamDefaultController<Uint8Array>, status: string) => {
+            if (streamClosed) return;
+            streamClosed = true;
+            try {
+              controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+          };
+
           const stream = new ReadableStream({
             async start(controller) {
-              const consume = async (resp: Response) => {
-                const reader = resp.body!.getReader();
+              const abortHandler = () => {
+                closeStream(controller, "incomplete:aborted");
+              };
+              request.signal.addEventListener("abort", abortHandler, { once: true });
+
+              const consume = async (resp: Response): Promise<string> => {
+                if (!resp.body) return "";
+                const reader = resp.body.getReader();
                 let buf = "";
                 let finishReason = "";
 
                 const processLine = (line: string) => {
+                  if (request.signal.aborted) return;
                   const t = line.trim();
                   if (!t.startsWith("data:")) return;
                   const payload = t.slice(5).trim();
@@ -219,31 +280,57 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
                       emittedAll += delta;
                       controller.enqueue(encoder.encode(delta));
                     }
-                  } catch {
-                    /* ignore */
+                  } catch (parseErr) {
+                    console.warn("generate SSE parse skip:", parseErr);
                   }
                 };
 
-                while (true) {
-                  const { value, done } = await reader.read();
-                  if (done) {
-                    if (buf.trim()) processLine(buf);
-                    break;
+                try {
+                  while (true) {
+                    if (request.signal.aborted) break;
+                    let readResult: ReadableStreamReadResult<Uint8Array>;
+                    try {
+                      readResult = await reader.read();
+                    } catch (readErr) {
+                      console.error("generate stream read error:", readErr);
+                      throw readErr;
+                    }
+                    const { value, done } = readResult;
+                    if (done) {
+                      if (buf.trim()) processLine(buf);
+                      break;
+                    }
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split("\n");
+                    buf = lines.pop() ?? "";
+                    for (const line of lines) processLine(line);
                   }
-                  buf += decoder.decode(value, { stream: true });
-                  const lines = buf.split("\n");
-                  buf = lines.pop() ?? "";
-                  for (const line of lines) processLine(line);
+                } finally {
+                  try {
+                    reader.releaseLock();
+                  } catch {
+                    /* ignore */
+                  }
                 }
                 return finishReason;
               };
 
               try {
+                if (request.signal.aborted) {
+                  closeStream(controller, "incomplete:aborted");
+                  return;
+                }
+
                 lastFinishReason = await consume(upstream);
 
                 // Auto-continue up to 3 times if we hit length cap without finishing the doc.
                 let attempts = 0;
-                while (attempts < 3 && lastFinishReason === "length" && !emittedAll.toLowerCase().includes("</html>")) {
+                while (
+                  !request.signal.aborted &&
+                  attempts < 3 &&
+                  lastFinishReason === "length" &&
+                  !emittedAll.toLowerCase().includes("</html>")
+                ) {
                   attempts++;
                   const continueMessages = [
                     { role: "system" as const, content: SYSTEM_PROMPT },
@@ -256,23 +343,44 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
                         "Continue the HTML document EXACTLY where you left off. Do not repeat any prior content, do not add commentary or fences. Output only the remaining HTML and end with </html>.",
                     },
                   ];
-                  const next = await callGateway(continueMessages);
-                  if (!next.ok || !next.body) break;
-                  lastFinishReason = await consume(next);
+                  let next: Response;
+                  try {
+                    next = await callGateway(continueMessages);
+                  } catch (fetchErr) {
+                    console.error("generate continue fetch error:", fetchErr);
+                    break;
+                  }
+                  if (!next.ok || !next.body) {
+                    console.error("generate continue failed:", next.status);
+                    break;
+                  }
+                  try {
+                    lastFinishReason = await consume(next);
+                  } catch (continueErr) {
+                    console.error("generate continue stream error:", continueErr);
+                    break;
+                  }
+                }
+
+                if (request.signal.aborted) {
+                  closeStream(controller, "incomplete:aborted");
+                  return;
                 }
 
                 const complete =
                   emittedContent &&
                   emittedAll.toLowerCase().includes("</html>") &&
                   (lastFinishReason === "" || lastFinishReason === "stop");
-                const status = complete ? "complete" : `incomplete:${lastFinishReason || "no-content"}`;
-                controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
-                controller.close();
+                closeStream(controller, complete ? "complete" : `incomplete:${lastFinishReason || "no-content"}`);
               } catch (err) {
                 console.error("generate stream error:", err);
-                controller.enqueue(encoder.encode(`${STATUS_PREFIX}incomplete:stream-error${STATUS_SUFFIX}`));
-                controller.close();
+                closeStream(controller, "incomplete:stream-error");
+              } finally {
+                request.signal.removeEventListener("abort", abortHandler);
               }
+            },
+            cancel() {
+              streamClosed = true;
             },
           });
 
