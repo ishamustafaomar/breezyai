@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,8 @@ export const Route = createFileRoute("/login")({
     redirect: typeof s.redirect === "string" ? s.redirect : "/app",
   }),
   beforeLoad: async ({ search }) => {
+    if (typeof window === "undefined") return;
+
     const { data } = await supabase.auth.getSession();
     if (data.session) throw redirect({ to: search.redirect || "/app" });
   },
@@ -32,6 +34,23 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const redirectTo = search.redirect || "/app";
+
+  useEffect(() => {
+    let mounted = true;
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) navigate({ to: redirectTo, replace: true });
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted && data.session) navigate({ to: redirectTo, replace: true });
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [navigate, redirectTo]);
 
   const handleEmail = async (e: FormEvent) => {
     e.preventDefault();
