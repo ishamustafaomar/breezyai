@@ -8,15 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
+function safeRedirect(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("/")) return "/app";
+  if (value.startsWith("//") || value.startsWith("/~oauth")) return "/app";
+  return value;
+}
+
 export const Route = createFileRoute("/login")({
   validateSearch: (s: Record<string, unknown>) => ({
-    redirect: typeof s.redirect === "string" ? s.redirect : "/app",
+    redirect: safeRedirect(s.redirect),
   }),
   beforeLoad: async ({ search }) => {
     if (typeof window === "undefined") return;
 
     const { data } = await supabase.auth.getSession();
-    if (data.session) throw redirect({ to: search.redirect || "/app" });
+    if (data.session) throw redirect({ to: search.redirect });
   },
   head: () => ({
     meta: [
@@ -34,7 +40,8 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const redirectTo = search.redirect || "/app";
+  const redirectTo = safeRedirect(search.redirect);
+  const authRedirectUrl = `${window.location.origin}/login?redirect=${encodeURIComponent(redirectTo)}`;
 
   useEffect(() => {
     let mounted = true;
@@ -61,7 +68,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/app` },
+          options: { emailRedirectTo: authRedirectUrl },
         });
         if (error) throw error;
         toast.success("Check your email to confirm your account.");
@@ -83,7 +90,7 @@ function LoginPage() {
     setBusy(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/app`,
+        redirect_uri: authRedirectUrl,
       });
       if (result.error) {
         toast.error(result.error.message || "Google sign-in failed");
