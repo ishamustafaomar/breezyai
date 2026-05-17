@@ -50,6 +50,7 @@ export const Route = createFileRoute("/api/chat")({
             body: JSON.stringify({
               model: "openai/gpt-5",
               stream: true,
+              max_completion_tokens: 16000,
               messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
             }),
           });
