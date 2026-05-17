@@ -601,7 +601,7 @@ function BuilderApp() {
         onOpenPublish={() => setPublishOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <div className="flex-1 grid grid-cols-[56px_1fr_400px] min-h-0">
+      <div className="flex-1 grid grid-cols-[56px_minmax(0,1fr)_minmax(340px,400px)] min-h-0 min-w-0">
         {/* Icon rail */}
         <IconRail
           active={activePanel}
@@ -613,8 +613,8 @@ function BuilderApp() {
         />
 
         {/* Center canvas */}
-        <section className="flex flex-col min-h-0 border-r border-border">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 bg-card/40">
+        <section className="flex flex-col min-h-0 min-w-0 border-r border-border">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 bg-card/40 min-w-0 overflow-x-auto">
             <div className="inline-flex rounded-full bg-muted p-1 text-xs font-semibold">
               <button
                 onClick={() => setView("preview")}
@@ -714,7 +714,7 @@ function BuilderApp() {
         </section>
 
         {/* Right side: chat / history / connectors-inline / settings */}
-        <aside className="flex flex-col bg-card/40 min-h-0">
+        <aside className="flex flex-col bg-card/40 min-h-0 min-w-0">
           {activePanel === "history" ? (
             <HistoryPanel
               versions={versions}
@@ -740,7 +740,7 @@ function BuilderApp() {
                 </button>
               </div>
 
-              <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-5 space-y-4 min-w-0">
                 {messages.map((m, i) => (
                   <Message
                     key={i}
