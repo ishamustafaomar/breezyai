@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,13 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
+function safeRedirect(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("/")) return "/app";
+  if (value.startsWith("//") || value.startsWith("/~oauth")) return "/app";
+  return value;
+}
+
 export const Route = createFileRoute("/login")({
   validateSearch: (s: Record<string, unknown>) => ({
-    redirect: typeof s.redirect === "string" ? s.redirect : "/app",
+    redirect: safeRedirect(s.redirect),
   }),
   beforeLoad: async ({ search }) => {
+    if (typeof window === "undefined") return;
+
     const { data } = await supabase.auth.getSession();
-    if (data.session) throw redirect({ to: search.redirect || "/app" });
+    if (data.session) throw redirect({ to: search.redirect });
   },
   head: () => ({
     meta: [
@@ -32,6 +40,24 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const redirectTo = safeRedirect(search.redirect);
+  const getAuthRedirectUrl = () => `${window.location.origin}/login?redirect=${encodeURIComponent(redirectTo)}`;
+
+  useEffect(() => {
+    let mounted = true;
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) navigate({ to: redirectTo, replace: true });
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted && data.session) navigate({ to: redirectTo, replace: true });
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [navigate, redirectTo]);
 
   const handleEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,7 +68,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/app` },
+          options: { emailRedirectTo: getAuthRedirectUrl() },
         });
         if (error) throw error;
         toast.success("Check your email to confirm your account.");
@@ -50,7 +76,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back!");
-        navigate({ to: search.redirect || "/app" });
+        navigate({ to: redirectTo, replace: true });
       }
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong");
@@ -64,7 +90,7 @@ function LoginPage() {
     setBusy(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/app`,
+        redirect_uri: getAuthRedirectUrl(),
       });
       if (result.error) {
         toast.error(result.error.message || "Google sign-in failed");
@@ -72,7 +98,7 @@ function LoginPage() {
         return;
       }
       if (result.redirected) return;
-      navigate({ to: search.redirect || "/app" });
+      navigate({ to: redirectTo, replace: true });
     } catch (err) {
       toast.error((err as Error).message || "Google sign-in failed");
       setBusy(false);
