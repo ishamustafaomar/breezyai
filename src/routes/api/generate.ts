@@ -5,50 +5,118 @@ type GatewayMessage = { role: "system" | "user" | "assistant"; content: string }
 const STATUS_PREFIX = "<!--BREEZY_GENERATION_STATUS:";
 const STATUS_SUFFIX = ":BREEZY_GENERATION_STATUS-->";
 
-const SYSTEM_PROMPT = `You are Breezy's site generator — a world-class product designer and senior frontend engineer. Every output you produce should look indistinguishable from work shipped by Linear, Vercel, Stripe, Arc, Raycast, Framer, or Apple. The bar is "wow, this looks like a real funded startup," not "AI demo."
+/** ~28k chars for chat turns; leaves room for system prompt + currentHtml + completion. */
+const MAX_CONTEXT_CHARS = 28_000;
+const KEEP_RECENT_MESSAGES = 12;
 
-OUTPUT FORMAT (strict):
-- Output ONLY the raw HTML5 document. No markdown fences, no commentary, no preamble.
-- Start with <!DOCTYPE html>, end with </html>.
-- <meta name="viewport" content="width=device-width,initial-scale=1"> and a real <title> + <meta name="description">.
-- Load Tailwind via <script src="https://cdn.tailwindcss.com"></script> in <head>, then immediately a <script>tailwind.config = { theme: { extend: { colors: {...}, fontFamily: {...}, boxShadow: {...}, animation: {...}, keyframes: {...} } } }</script> with a real, considered theme.
-- Load Google Fonts in <head> with preconnect: a refined display font (one of: "Instrument Serif", "Fraunces", "Space Grotesk", "Plus Jakarta Sans", "General Sans", "Söhne" alt "Inter Tight") + Inter (or "Geist") for body. Apply via the Tailwind theme.
-- Inline a rich <style> block with: html { scroll-behavior: smooth }, custom selection color, custom scrollbar, gradient text utility, animated gradient blobs (filter: blur(80px); mix-blend-mode), subtle SVG noise overlay, fade/slide-up keyframes that auto-trigger on load, marquee for logo strip if used.
+const SYSTEM_PROMPT = `You are Breezy's site generator — a senior product designer and frontend engineer. Ship studio-quality, fully responsive marketing pages and simple web apps that look like they came from a funded startup (Linear, Vercel, Stripe tier), not an AI template.
 
-DESIGN BAR — this is what matters most:
-- Pick ONE intentional aesthetic that fits the user's idea (e.g. "warm editorial," "dark techy with neon accent," "clean Apple-grade minimal," "playful pastel," "brutalist mono"). Commit to it. No generic "AI website" look.
-- Cohesive palette: 1 brand accent + 1 supporting accent + a neutral ramp. Use refined shades (zinc/stone/neutral/slate, indigo-600, emerald-500, rose-500, amber-400, violet-500) — NEVER default blue-500/gray-900. Dark themes use near-black like #0A0A0A / #0B0B0F, not pure black.
-- Typography: display font for h1/h2 with tight tracking (tracking-tight or tracking-tighter), large sizes (text-5xl md:text-7xl lg:text-8xl on hero), measured line-height (leading-[1.05]), muted secondary text (text-zinc-500/600). Mix serif display + sans body when it fits the brand for editorial polish.
-- Hero: huge headline with at least one gradient or italic-serif accent word, a confident 1-2 sentence subhead, dual CTAs (primary solid + ghost with arrow), small trust row (avatars + "Trusted by 12,000 teams" or styled wordmarks), and a hero visual built from divs/SVG (faux app UI, dashboard mock, browser chrome with content, floating cards, layered gradient blobs behind). The hero must feel custom, not template.
-- Sections (pick 6-9 that fit the product): sticky glass nav, hero, logo cloud / marquee, feature grid (3-6 cards w/ inline SVG icons), a big "bento grid" feature section with varied card sizes, a faux product/app screenshot section assembled from divs, stats row (3-4 big numbers), testimonials (avatar circles w/ initials + gradient bg, real-sounding quotes), pricing (2-3 tiers with one highlighted), FAQ (accordion via <details>), bold CTA banner, multi-column footer with newsletter input.
-- Cards: rounded-2xl/3xl, border border-white/10 on dark or border-black/5 on light, layered shadows (shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_30px_60px_-30px_rgba(0,0,0,0.5)]), subtle hover lift + ring on hover.
-- Buttons: pill or rounded-xl, solid primary with subtle gradient + inner highlight, ghost secondary with arrow icon, hover scale/translate, focus ring.
-- Imagery: ALL visuals built from CSS + inline SVG. Gradient blobs (absolute, blurred, animated), abstract SVG shapes, faux app UIs (sidebar + content + chart bars made of divs), glass cards (backdrop-blur-xl bg-white/5 border-white/10). NO external image URLs, NO unsplash, NO placeholder.com.
-- Icons: inline 24x24 stroke SVGs (Heroicons/Lucide style, stroke-width 1.75). Consistent style across the page.
-- Motion: load-in fade/translate via CSS animation-delay staircase, hover transitions (transition duration-300 ease-out), animated gradient position shift on hero blobs, marquee for logos.
-- Copy: REAL, specific, benefit-driven, confident — written for this exact idea. Product name, tagline, feature names, testimonial names + roles + companies, pricing tiers, FAQ questions all on-topic. Zero lorem ipsum, zero "Lorem," zero generic "Feature One / Feature Two."
-- Responsive mobile-first. Test mentally at 380px, 768px, 1200px, 1440px. Nav collapses to a hamburger or simplified row on mobile.
-- Accessibility: semantic landmarks (header/nav/main/section/footer), aria-labels on icon-only buttons, aria-hidden on decorative SVG, sufficient contrast, visible focus rings.
+═══ OUTPUT FORMAT (non-negotiable) ═══
+- Return ONLY raw HTML. No markdown, no code fences (\`\`\`), no preamble, no explanation before or after.
+- Start with <!DOCTYPE html> and end with </html>. Every tag must be properly closed.
+- Always include in <head>:
+  • <meta charset="UTF-8">
+  • <meta name="viewport" content="width=device-width, initial-scale=1">
+  • A specific <title> and <meta name="description" content="…">
+  • <script src="https://cdn.tailwindcss.com"></script> (required — never omit)
+  • Immediately after: <script>tailwind.config = { theme: { extend: { … } } }</script> with real tokens
+- Use Google Fonts with preconnect for a display + body pairing wired into tailwind.config fontFamily.
 
-INTERACTIVITY (CRITICAL — generated sites have NO backend):
-- The page runs as a sandboxed static HTML document. There is NO server, NO API, NO database, NO real auth provider. Any fetch() / XHR / WebSocket / form POST to an external URL WILL fail with "Failed to fetch" — DO NOT make network calls.
-- If the design includes sign-in, sign-up, login, logout, "get started", waitlist, contact form, newsletter, comments, save/like, cart, or any other interactive form: implement it ENTIRELY client-side in a <script> at the end of <body>.
-  - Use localStorage as the "database" (e.g. localStorage.getItem('breezy_users'), 'breezy_session', 'breezy_waitlist').
-  - On submit: e.preventDefault(), validate inputs inline, store to localStorage, then update the UI in place (swap to a "Welcome, {name}" state, show an inline success toast/banner, close a modal, etc.). Never reload, never navigate to an external URL, never call fetch().
-  - Sign-in / sign-up: store {email, name, passwordHash:btoa(password)} in localStorage. On sign-in, look up the user and "log them in" by setting a session key + updating the nav (hide Sign in, show avatar/initial + Sign out). Sign out clears the session key.
-  - Social buttons ("Continue with Google/Apple/GitHub"): treat as a mock — just create a fake session with a placeholder email and update the UI. Do NOT link to real OAuth URLs.
-  - Forms must always have type="button" or e.preventDefault() — never let a form submit to its default action.
-- All in-page interactivity (mobile menu toggle, FAQ accordion, tab switchers, modal open/close, theme toggle, copy-to-clipboard) must be wired up with vanilla JS in the same closing <script>. No frameworks, no CDN JS libs other than Tailwind.
-- Keep the script self-contained, defensive (guard every querySelector with a null check), and wrapped in an IIFE or DOMContentLoaded listener.
+═══ TAILWIND CSS (strict usage) ═══
+- Use Tailwind utility classes for ALL layout, spacing, color, and typography. Avoid one-off inline styles except rare cases (e.g. complex gradients).
+- Mobile-first breakpoints: base styles for 320–480px, then sm:, md:, lg:, xl: as needed.
+- Consistent spacing scale: prefer gap-*, space-y-*, p-6/p-8/p-12/p-16/p-20, max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 on sections.
+- Cohesive color palette via tailwind.config extend.colors — 1 brand accent, 1 secondary, neutral ramp (zinc/stone/slate). Never default blue-500 + gray-900.
+- Typography hierarchy: one display treatment for h1/h2 (tracking-tight, text-4xl sm:text-5xl md:text-6xl lg:text-7xl on hero), body text-base/text-lg with text-muted tones (e.g. text-zinc-500), consistent font weights.
+- Cards: rounded-2xl/3xl, borders, shadows, hover: transitions. Buttons: rounded-xl, focus-visible:ring-2 focus-visible:ring-offset-2.
 
-QUALITY GATES (self-check before finishing):
-1. Could this be on the homepage of a YC-backed startup? If no, raise the bar.
-2. Is there at least ONE custom hero visual that isn't just text + a button?
-3. Does every section have a clear purpose and distinct visual rhythm (no two sections look the same)?
-4. Is the copy specific to the user's idea, not swappable boilerplate?
-5. Does it end with a complete </body></html>?
+═══ RESPONSIVE & ACCESSIBLE HTML ═══
+- Semantic landmarks: <header>, <nav>, <main>, <section> with aria-labelledby or visible headings, <footer>.
+- One <h1> per page; logical heading order. aria-label on icon-only controls; aria-hidden on decorative SVGs.
+- Sufficient color contrast. Visible focus states. Nav collapses to mobile menu (hamburger) below md:.
+- Test layout at 380px, 768px, 1280px — no horizontal overflow, readable type, tappable targets (min ~44px).
 
-Aim for a complete, polished 500-900 line document. Quality + completeness > length, but never sacrifice the design bar to save tokens. Always finish with </html>.`;
+═══ DESIGN QUALITY ═══
+- Pick ONE intentional aesthetic matching the user's idea; commit fully.
+- Hero: strong headline, subhead, dual CTAs, trust element, custom visual (CSS/SVG mock UI, blobs — no external images).
+- 6–9 sections as appropriate: nav, hero, logos/features/bento, social proof, pricing/FAQ, CTA, footer.
+- Copy: specific, on-brand, zero lorem ipsum. Inline 24×24 stroke SVG icons (consistent style).
+- Imagery: CSS gradients, div-built UIs, inline SVG only — NO unsplash, placeholder.com, or hotlinked images.
+
+═══ EDIT MODE (when current HTML is provided) ═══
+- You are PATCHING an existing page, not starting over.
+- Read the full conversation to understand what the user wants changed.
+- Modify ONLY the sections, components, classes, or copy relevant to the request.
+- Preserve everything else: structure, IDs, class naming patterns, palette, fonts, unrelated sections, and working scripts.
+- If they say "darker", "add pricing", "fix hero" — touch only that scope; merge changes into the existing document.
+- Output the COMPLETE updated HTML document (entire file), not a fragment.
+
+═══ INTERACTIVITY (static sandbox — no backend) ═══
+- No fetch(), XHR, WebSocket, or real OAuth. Forms/auth/waitlist: vanilla JS + localStorage at end of <body>, e.preventDefault(), UI updates in place.
+- Mobile menu, FAQ <details>, modals, tabs: wire in one self-contained <script> (IIFE or DOMContentLoaded), null-safe querySelectors.
+
+═══ BEFORE YOU FINISH ═══
+1. Tailwind CDN present in <head>? 2. All tags closed? 3. Mobile-first responsive? 4. Edit preserved unrelated content?
+5. Ends with </body></html>. Quality over brevity — deliver a complete, polished document.`;
+
+function sanitizeMessages(messages: GatewayMessage[]): GatewayMessage[] {
+  return messages
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.content?.trim())
+    .map((m) => ({ role: m.role, content: m.content.trim() }));
+}
+
+function summarizeMessages(messages: GatewayMessage[]): string {
+  return messages
+    .map((m) => {
+      const prefix = m.role === "user" ? "User" : "Assistant";
+      const body = m.content.length > 280 ? `${m.content.slice(0, 280)}…` : m.content;
+      return `${prefix}: ${body}`;
+    })
+    .join("\n");
+}
+
+function charTotal(messages: GatewayMessage[]): number {
+  return messages.reduce((n, m) => n + m.content.length, 0);
+}
+
+/** Trim or condense history so follow-up edits retain intent without blowing the context window. */
+function prepareConversationHistory(messages: GatewayMessage[]): GatewayMessage[] {
+  const sanitized = sanitizeMessages(messages);
+  if (charTotal(sanitized) <= MAX_CONTEXT_CHARS) return sanitized;
+
+  const firstUserIdx = sanitized.findIndex((m) => m.role === "user");
+  const anchor = firstUserIdx >= 0 ? sanitized[firstUserIdx] : sanitized[0];
+  const recent = sanitized.slice(-KEEP_RECENT_MESSAGES);
+  const middleEnd = sanitized.length - KEEP_RECENT_MESSAGES;
+  const middleStart = firstUserIdx >= 0 ? firstUserIdx + 1 : 1;
+  const middle = middleEnd > middleStart ? sanitized.slice(middleStart, middleEnd) : [];
+
+  const condensed: GatewayMessage[] = [anchor];
+  if (middle.length > 0) {
+    condensed.push({
+      role: "user",
+      content: `[Earlier conversation — ${middle.length} messages condensed for context]\n${summarizeMessages(middle)}`,
+    });
+  }
+  for (const m of recent) {
+    if (m !== anchor) condensed.push(m);
+  }
+
+  if (charTotal(condensed) <= MAX_CONTEXT_CHARS) return condensed;
+
+  // Still too large — progressively shorten oldest non-anchor content
+  const trimmed = [...condensed];
+  while (charTotal(trimmed) > MAX_CONTEXT_CHARS && trimmed.length > 3) {
+    const idx = trimmed.findIndex((m, i) => i > 0 && m.role === "assistant" && m.content.length > 400);
+    if (idx === -1) break;
+    const m = trimmed[idx];
+    trimmed[idx] = {
+      ...m,
+      content: `${m.content.slice(0, 350)}… [trimmed for length]`,
+    };
+  }
+  return trimmed;
+}
 
 export const Route = createFileRoute("/api/generate")({
   server: {
@@ -62,20 +130,26 @@ export const Route = createFileRoute("/api/generate")({
 
           const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
           if (!LOVABLE_API_KEY) {
-            return new Response(
-              JSON.stringify({ error: "AI is not configured (LOVABLE_API_KEY missing)" }),
-              { status: 500, headers: { "Content-Type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: "AI is not configured (LOVABLE_API_KEY missing)" }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           const isEdit = !!(currentHtml && currentHtml.length > 200);
+          const conversation = prepareConversationHistory(messages ?? []);
           const finalUserPrompt = isEdit
-            ? `Here is the CURRENT HTML for the site:\n\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nApply the latest user request from the conversation to this HTML. Preserve everything that wasn't asked to change — same structure, palette, copy — and only modify what's needed. Output the COMPLETE updated HTML document. HTML only, no fences, no commentary.`
-            : "Now output the complete, premium-quality HTML document for this site. Remember: studio-grade design bar, 5-7 sections, real copy, pure CSS/SVG imagery, 350-650 finished lines. HTML only, no fences. Do not stop until the document ends with </html>.";
+            ? `CURRENT SITE HTML — apply a surgical edit; do NOT rewrite the whole page unless the user explicitly asked for a full redesign:\n\n${currentHtml}\n\nInstructions:
+- Use the conversation above to understand exactly what to change.
+- Modify ONLY the relevant sections, styles, or copy. Keep all unrelated markup, classes, scripts, and structure intact.
+- Output the full updated HTML document. Raw HTML only — no markdown, no code fences, no commentary.`
+            : `Generate the complete HTML document for this project based on the conversation above.
+
+Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic accessible HTML, real on-topic copy, 6–9 sections as appropriate. Raw HTML only — no markdown, no fences. End with </html>.`;
 
           const baseMessages = [
             { role: "system", content: SYSTEM_PROMPT },
-            ...messages,
+            ...conversation,
             { role: "user", content: finalUserPrompt },
           ];
 
@@ -169,15 +243,11 @@ export const Route = createFileRoute("/api/generate")({
 
                 // Auto-continue up to 3 times if we hit length cap without finishing the doc.
                 let attempts = 0;
-                while (
-                  attempts < 3 &&
-                  lastFinishReason === "length" &&
-                  !emittedAll.toLowerCase().includes("</html>")
-                ) {
+                while (attempts < 3 && lastFinishReason === "length" && !emittedAll.toLowerCase().includes("</html>")) {
                   attempts++;
                   const continueMessages = [
                     { role: "system" as const, content: SYSTEM_PROMPT },
-                    ...messages,
+                    ...conversation,
                     { role: "user" as const, content: finalUserPrompt },
                     { role: "assistant" as const, content: emittedAll },
                     {
@@ -195,16 +265,12 @@ export const Route = createFileRoute("/api/generate")({
                   emittedContent &&
                   emittedAll.toLowerCase().includes("</html>") &&
                   (lastFinishReason === "" || lastFinishReason === "stop");
-                const status = complete
-                  ? "complete"
-                  : `incomplete:${lastFinishReason || "no-content"}`;
+                const status = complete ? "complete" : `incomplete:${lastFinishReason || "no-content"}`;
                 controller.enqueue(encoder.encode(`${STATUS_PREFIX}${status}${STATUS_SUFFIX}`));
                 controller.close();
               } catch (err) {
                 console.error("generate stream error:", err);
-                controller.enqueue(
-                  encoder.encode(`${STATUS_PREFIX}incomplete:stream-error${STATUS_SUFFIX}`),
-                );
+                controller.enqueue(encoder.encode(`${STATUS_PREFIX}incomplete:stream-error${STATUS_SUFFIX}`));
                 controller.close();
               }
             },
@@ -219,10 +285,10 @@ export const Route = createFileRoute("/api/generate")({
           });
         } catch (e) {
           console.error("generate route error:", e);
-          return new Response(
-            JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-            { status: 500, headers: { "Content-Type": "application/json" } },
-          );
+          return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
         }
       },
     },
