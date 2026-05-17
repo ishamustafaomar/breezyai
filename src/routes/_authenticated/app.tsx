@@ -1283,10 +1283,12 @@ function PreviewCanvas({
   device,
   html,
   build,
+  mode,
 }: {
   device: "mobile" | "tablet" | "desktop";
   html: string;
   build: BuildStatus | null;
+  mode: "preview" | "live";
 }) {
   const widths = { mobile: "max-w-[380px]", tablet: "max-w-[820px]", desktop: "max-w-[1200px]" };
   const heights = { mobile: "h-[720px]", tablet: "h-[820px]", desktop: "h-[760px]" };
@@ -1300,7 +1302,9 @@ function PreviewCanvas({
             <span className="size-2.5 rounded-full bg-butter" />
             <span className="size-2.5 rounded-full bg-mint" />
           </div>
-          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">untitled.breezy.app</div>
+          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">
+            {mode === "live" ? "live.breezy.app" : "preview.breezy.app"}
+          </div>
           {generating && (
             <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 transition-opacity duration-300">
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
