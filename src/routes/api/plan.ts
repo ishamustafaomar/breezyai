@@ -53,6 +53,7 @@ export const Route = createFileRoute("/api/plan")({
             body: JSON.stringify({
               model: "google/gemini-2.5-flash",
               response_format: { type: "json_object" },
+              max_tokens: 8000,
               messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: userContent },
