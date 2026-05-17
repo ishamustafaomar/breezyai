@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Sparkles,
@@ -22,9 +22,27 @@ import {
   History,
   ExternalLink,
   RotateCcw,
+  MessageSquare,
+  Plug,
+  Settings as SettingsIcon,
+  Wand2,
+  Globe,
+  Pencil,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
+import {
+  CONNECTORS,
+  connectorContextBlock,
+  isConnected,
+  loadConnections,
+  type Connection,
+} from "@/lib/connectors";
+import { ConnectorsPanel } from "@/components/builder/connectors-panel";
+import { PlanCard, type Plan } from "@/components/builder/plan-card";
+import { PublishDialog, type Deployment } from "@/components/builder/publish-dialog";
+import { ProjectSettingsDialog } from "@/components/builder/project-settings-dialog";
+import { useShortcuts } from "@/hooks/use-shortcuts";
 
 export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
@@ -47,13 +65,23 @@ type BuildStatus = {
   error?: string;
 };
 
-type Msg = { role: "user"; content: string } | { role: "assistant"; content: string; build?: BuildStatus };
+type PlanState = {
+  plan: Plan | null;
+  loading: boolean;
+  status: "pending" | "approved" | "skipped";
+  /** Captures the user prompt that triggered the plan so Approve can resume it. */
+  userPrompt: string;
+};
+
+type Msg =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; build?: BuildStatus; plan?: PlanState };
 
 const STARTER: Msg[] = [
   {
     role: "assistant",
     content:
-      "Hey! I'm **Breezy** ✨ Tell me what you want to build — even a half-baked idea is great. I'll design it live and we can shape it together.",
+      "Hey! I'm **Breezy** ✨ Tell me what you want to build — even a half-baked idea is great. I'll plan it first, then design it live.",
   },
 ];
 
