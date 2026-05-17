@@ -1151,7 +1151,7 @@ function MessageContent({ text }: { text: string }) {
     }
   });
   flushBullets(999);
-  return <div className="space-y-2 text-sm leading-relaxed">{out}</div>;
+  return <div className="space-y-2 text-sm leading-relaxed break-words [overflow-wrap:anywhere]">{out}</div>;
 }
 
 function BuildCard({ build }: { build: BuildStatus }) {
@@ -1239,21 +1239,38 @@ function BuildCard({ build }: { build: BuildStatus }) {
   );
 }
 
-function Message({ msg }: { msg: Msg }) {
+function Message({
+  msg,
+  onApprovePlan,
+  onSkipPlan,
+}: {
+  msg: Msg;
+  onApprovePlan?: () => void;
+  onSkipPlan?: () => void;
+}) {
   if (msg.role === "user") {
     return (
-      <div className="flex gap-3 justify-end animate-pop-in">
-        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.content}</div>
+      <div className="flex gap-3 justify-end animate-pop-in min-w-0">
+        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%] min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</div>
       </div>
     );
   }
   return (
-    <div className="flex gap-3 animate-pop-in">
+    <div className="flex gap-3 animate-pop-in min-w-0">
       <Avatar />
-      <div className="space-y-2 max-w-[85%] w-full">
+      <div className="space-y-2 max-w-[85%] w-full min-w-0">
+        {msg.plan && (
+          <PlanCard
+            plan={msg.plan.plan}
+            loading={msg.plan.loading}
+            status={msg.plan.status}
+            onApprove={onApprovePlan ?? (() => {})}
+            onSkip={onSkipPlan ?? (() => {})}
+          />
+        )}
         {msg.build && <BuildCard build={msg.build} />}
         {msg.content && (
-          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5">
+          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 min-w-0">
             <MessageContent text={msg.content} />
           </div>
         )}
