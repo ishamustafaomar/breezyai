@@ -17,7 +17,7 @@ type Props = {
 
 export function PlanCard({ plan, loading, status, onApprove, onSkip }: Props) {
   return (
-    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/5 to-accent/10 p-4 space-y-3">
+    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/5 to-accent/10 p-4 space-y-3 min-w-0 overflow-hidden">
       <div className="flex items-center gap-2">
         <div className="size-6 rounded-lg bg-primary/20 grid place-items-center">
           <Sparkles className="size-3.5 text-primary" strokeWidth={2.5} />
@@ -41,7 +41,7 @@ export function PlanCard({ plan, loading, status, onApprove, onSkip }: Props) {
         </div>
       ) : plan ? (
         <div className="space-y-2.5 text-sm">
-          <p className="leading-relaxed">{plan.summary}</p>
+          <p className="leading-relaxed break-words [overflow-wrap:anywhere]">{plan.summary}</p>
           {plan.sections?.length > 0 && (
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Sections</p>
@@ -49,7 +49,7 @@ export function PlanCard({ plan, loading, status, onApprove, onSkip }: Props) {
                 {plan.sections.map((s, i) => (
                   <span
                     key={i}
-                    className="text-xs px-2 py-1 rounded-full bg-card border border-border"
+                    className="text-xs px-2 py-1 rounded-full bg-card border border-border max-w-full break-words [overflow-wrap:anywhere]"
                   >
                     {s}
                   </span>
@@ -60,7 +60,7 @@ export function PlanCard({ plan, loading, status, onApprove, onSkip }: Props) {
           {plan.vibe && (
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Vibe</p>
-              <p className="text-xs italic text-muted-foreground">{plan.vibe}</p>
+              <p className="text-xs italic text-muted-foreground break-words [overflow-wrap:anywhere]">{plan.vibe}</p>
             </div>
           )}
           {plan.questions?.length > 0 && (
@@ -68,7 +68,7 @@ export function PlanCard({ plan, loading, status, onApprove, onSkip }: Props) {
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Questions</p>
               <ul className="text-xs space-y-0.5">
                 {plan.questions.map((q, i) => (
-                  <li key={i} className="text-muted-foreground">• {q}</li>
+                  <li key={i} className="text-muted-foreground break-words [overflow-wrap:anywhere]">• {q}</li>
                 ))}
               </ul>
             </div>

@@ -601,7 +601,7 @@ function BuilderApp() {
         onOpenPublish={() => setPublishOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <div className="flex-1 grid grid-cols-[56px_1fr_400px] min-h-0">
+      <div className="flex-1 grid grid-cols-[56px_minmax(0,1fr)_minmax(340px,400px)] min-h-0 min-w-0">
         {/* Icon rail */}
         <IconRail
           active={activePanel}
@@ -613,8 +613,8 @@ function BuilderApp() {
         />
 
         {/* Center canvas */}
-        <section className="flex flex-col min-h-0 border-r border-border">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 bg-card/40">
+        <section className="flex flex-col min-h-0 min-w-0 border-r border-border">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 bg-card/40 min-w-0 overflow-x-auto">
             <div className="inline-flex rounded-full bg-muted p-1 text-xs font-semibold">
               <button
                 onClick={() => setView("preview")}
@@ -714,7 +714,7 @@ function BuilderApp() {
         </section>
 
         {/* Right side: chat / history / connectors-inline / settings */}
-        <aside className="flex flex-col bg-card/40 min-h-0">
+        <aside className="flex flex-col bg-card/40 min-h-0 min-w-0">
           {activePanel === "history" ? (
             <HistoryPanel
               versions={versions}
@@ -740,7 +740,7 @@ function BuilderApp() {
                 </button>
               </div>
 
-              <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-5 space-y-4 min-w-0">
                 {messages.map((m, i) => (
                   <Message
                     key={i}
@@ -1151,7 +1151,7 @@ function MessageContent({ text }: { text: string }) {
     }
   });
   flushBullets(999);
-  return <div className="space-y-2 text-sm leading-relaxed">{out}</div>;
+  return <div className="space-y-2 text-sm leading-relaxed break-words [overflow-wrap:anywhere]">{out}</div>;
 }
 
 function BuildCard({ build }: { build: BuildStatus }) {
@@ -1239,21 +1239,38 @@ function BuildCard({ build }: { build: BuildStatus }) {
   );
 }
 
-function Message({ msg }: { msg: Msg }) {
+function Message({
+  msg,
+  onApprovePlan,
+  onSkipPlan,
+}: {
+  msg: Msg;
+  onApprovePlan?: () => void;
+  onSkipPlan?: () => void;
+}) {
   if (msg.role === "user") {
     return (
-      <div className="flex gap-3 justify-end animate-pop-in">
-        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.content}</div>
+      <div className="flex gap-3 justify-end animate-pop-in min-w-0">
+        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%] min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</div>
       </div>
     );
   }
   return (
-    <div className="flex gap-3 animate-pop-in">
+    <div className="flex gap-3 animate-pop-in min-w-0">
       <Avatar />
-      <div className="space-y-2 max-w-[85%] w-full">
+      <div className="space-y-2 max-w-[85%] w-full min-w-0">
+        {msg.plan && (
+          <PlanCard
+            plan={msg.plan.plan}
+            loading={msg.plan.loading}
+            status={msg.plan.status}
+            onApprove={onApprovePlan ?? (() => {})}
+            onSkip={onSkipPlan ?? (() => {})}
+          />
+        )}
         {msg.build && <BuildCard build={msg.build} />}
         {msg.content && (
-          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5">
+          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 min-w-0">
             <MessageContent text={msg.content} />
           </div>
         )}
@@ -1266,10 +1283,12 @@ function PreviewCanvas({
   device,
   html,
   build,
+  mode,
 }: {
   device: "mobile" | "tablet" | "desktop";
   html: string;
   build: BuildStatus | null;
+  mode: "preview" | "live";
 }) {
   const widths = { mobile: "max-w-[380px]", tablet: "max-w-[820px]", desktop: "max-w-[1200px]" };
   const heights = { mobile: "h-[720px]", tablet: "h-[820px]", desktop: "h-[760px]" };
@@ -1283,7 +1302,9 @@ function PreviewCanvas({
             <span className="size-2.5 rounded-full bg-butter" />
             <span className="size-2.5 rounded-full bg-mint" />
           </div>
-          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">untitled.breezy.app</div>
+          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">
+            {mode === "live" ? "live.breezy.app" : "preview.breezy.app"}
+          </div>
           {generating && (
             <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 transition-opacity duration-300">
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
