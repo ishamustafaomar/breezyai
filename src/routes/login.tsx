@@ -69,7 +69,7 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back!");
-        navigate({ to: search.redirect || "/app" });
+        navigate({ to: redirectTo, replace: true });
       }
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong");
@@ -91,7 +91,7 @@ function LoginPage() {
         return;
       }
       if (result.redirected) return;
-      navigate({ to: search.redirect || "/app" });
+      navigate({ to: redirectTo, replace: true });
     } catch (err) {
       toast.error((err as Error).message || "Google sign-in failed");
       setBusy(false);
