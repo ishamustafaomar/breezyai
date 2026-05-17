@@ -41,14 +41,13 @@ export const Route = createFileRoute("/_authenticated/app")({
 
 type BuildStatus = {
   phase: string;
+  phaseIndex: number;
   progress: number; // 0-100
   done: boolean;
   error?: string;
 };
 
-type Msg =
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string; build?: BuildStatus };
+type Msg = { role: "user"; content: string } | { role: "assistant"; content: string; build?: BuildStatus };
 
 const STARTER: Msg[] = [
   {
@@ -65,14 +64,35 @@ const IDEAS = [
   "A SaaS pricing page",
 ];
 
+/** Ordered by typical generation sequence; detectPhase returns the highest matched index. */
 const PHASES: { id: string; label: string; match?: RegExp }[] = [
-  { id: "think", label: "Thinking through the design" },
-  { id: "scaffold", label: "Scaffolding the document", match: /<body[\s>]/i },
-  { id: "theme", label: "Tuning the color palette", match: /tailwind\.config\s*=/i },
-  { id: "hero", label: "Designing the hero", match: /<(header|nav)[\s>]/i },
-  { id: "sections", label: "Building feature sections", match: /<section[\s>]/i },
-  { id: "polish", label: "Polishing details & motion", match: /testimonial|pricing|faq|cta/i },
-  { id: "finalize", label: "Finalizing markup", match: /<\/footer>/i },
+  { id: "plan", label: "Planning layout & structure" },
+  { id: "doctype", label: "Scaffolding the document", match: /<!DOCTYPE\s+html>/i },
+  { id: "head", label: "Loading Tailwind & fonts", match: /cdn\.tailwindcss\.com/i },
+  { id: "theme", label: "Defining colors & typography", match: /tailwind\.config\s*=/i },
+  { id: "base", label: "Setting base styles & motion", match: /<style[\s>]/i },
+  { id: "nav", label: "Building navigation", match: /<nav[\s>]/i },
+  {
+    id: "hero",
+    label: "Designing the hero",
+    match: /<h1[\s>]|class="[^"]*\bhero\b|id="hero"/i,
+  },
+  {
+    id: "features",
+    label: "Crafting feature sections",
+    match: /<section[\s>]/i,
+  },
+  {
+    id: "proof",
+    label: "Adding social proof",
+    match: /testimonial|trusted\s+by|review|avatar/i,
+  },
+  {
+    id: "convert",
+    label: "Building pricing & CTAs",
+    match: /pricing|faq|accordion|<details[\s>]/i,
+  },
+  { id: "footer", label: "Finishing footer & scripts", match: /<footer[\s>]/i },
   { id: "verify", label: "Verifying completion", match: /<\/html>/i },
 ];
 const PHASE_LABELS = PHASES.map((p) => p.label);
@@ -104,15 +124,20 @@ function previewableHtml(partial: string): string {
   return cleaned + (hasBodyClose ? "" : "\n</body>") + "\n</html>";
 }
 
-// Detect the highest-progress phase reached given the partial html.
+// Detect the highest-progress phase reached given the partial streamed HTML.
 function detectPhase(html: string): number {
   let idx = 0;
   for (let i = 0; i < PHASES.length; i++) {
     const p = PHASES[i];
-    if (!p.match) continue;
-    if (p.match.test(html)) idx = i;
+    if (p.match?.test(html)) idx = i;
   }
   return idx;
+}
+
+function progressFromPhase(phaseIdx: number, htmlLength: number, targetLen: number): number {
+  const phasePct = Math.round(((phaseIdx + 1) / PHASES.length) * 88);
+  const lenPct = Math.round((htmlLength / targetLen) * 88);
+  return Math.min(96, Math.max(phasePct, lenPct));
 }
 
 type Version = { id: string; html: string; prompt: string; createdAt: number };
@@ -153,8 +178,7 @@ function BuilderApp() {
       if (data.versions?.length) {
         setVersions(data.versions);
         const active =
-          data.versions.find((v) => v.id === data.activeVersionId) ??
-          data.versions[data.versions.length - 1];
+          data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
         if (active) {
           setActiveVersionId(active.id);
           setGeneratedHtml(active.html);
@@ -170,10 +194,7 @@ function BuilderApp() {
   useEffect(() => {
     if (!hydratedRef.current) return;
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ messages, versions, activeVersionId, name: projectName }),
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, versions, activeVersionId, name: projectName }));
     } catch {
       /* quota: ignore */
     }
@@ -198,13 +219,13 @@ function BuilderApp() {
     });
   };
 
+  const phaseIdxRef = useRef(0);
   const startPhaseTicker = () => {
-    let idx = 0;
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
     phaseTimerRef.current = setInterval(() => {
-      idx = Math.min(idx + 1, 1); // gently nudge to "scaffolding" while waiting on first tokens
-      patchBuild({ phase: PHASE_LABELS[idx] });
-    }, 1800);
+      if (phaseIdxRef.current > 0) return;
+      patchBuild({ phase: PHASE_LABELS[0], phaseIndex: 0, progress: 8 });
+    }, 2200);
   };
   const stopPhaseTicker = () => {
     if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
@@ -224,7 +245,7 @@ function BuilderApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          messages: history.filter((m) => m.content.trim()).map((m) => ({ role: m.role, content: m.content })),
           currentHtml: baseHtml || undefined,
         }),
         signal: controller.signal,
@@ -246,6 +267,7 @@ function BuilderApp() {
           error: error || "Generation failed",
           progress: 100,
           phase: "Failed",
+          phaseIndex: PHASES.length - 1,
         });
         return null;
       }
@@ -255,19 +277,18 @@ function BuilderApp() {
       let html = "";
       const TARGET = 22000;
       let lastPreviewLen = 0;
-      patchBuild({ phase: PHASE_LABELS[1] });
+      phaseIdxRef.current = 0;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
 
-        // Drive phase from actual content, not a timer
-        const phaseIdx = detectPhase(html);
+        const detected = detectPhase(html);
+        phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
+        const phaseIdx = phaseIdxRef.current;
         const phaseLabel = PHASE_LABELS[phaseIdx];
-        const lenPct = Math.round((html.length / TARGET) * 96);
-        const phasePct = Math.round(((phaseIdx + 1) / PHASES.length) * 92);
-        const pct = Math.min(96, Math.max(lenPct, phasePct));
-        patchBuild({ progress: pct, phase: phaseLabel });
+        const pct = progressFromPhase(phaseIdx, html.length, TARGET);
+        patchBuild({ progress: pct, phase: phaseLabel, phaseIndex: phaseIdx });
 
         // Live preview: as soon as we have a renderable body, push it.
         // Throttle to roughly every 600 chars to avoid iframe thrash.
@@ -281,7 +302,11 @@ function BuilderApp() {
       }
       html += decoder.decode();
       stopPhaseTicker();
-      patchBuild({ phase: "Verifying completion", progress: 98 });
+      patchBuild({
+        phase: "Verifying completion",
+        phaseIndex: PHASES.length - 1,
+        progress: 98,
+      });
       const marker = html.match(COMPLETION_MARKER_RE);
       const status = marker?.[1] ?? "missing-status";
       html = html.replace(COMPLETION_MARKER_RE, "");
@@ -293,7 +318,13 @@ function BuilderApp() {
         const error =
           "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
         toast.error("Build was incomplete — kept the previous version");
-        patchBuild({ done: true, error, progress: 98, phase: "Incomplete" });
+        patchBuild({
+          done: true,
+          error,
+          progress: 98,
+          phase: "Incomplete",
+          phaseIndex: phaseIdxRef.current,
+        });
         return null;
       }
       setGeneratedHtml(html);
@@ -306,14 +337,30 @@ function BuilderApp() {
       };
       setVersions((prev) => [...prev, v]);
       setActiveVersionId(v.id);
-      patchBuild({ progress: 100, phase: "Finished and verified", done: true });
+      patchBuild({
+        progress: 100,
+        phase: "Finished and verified",
+        phaseIndex: PHASES.length - 1,
+        done: true,
+      });
       return html;
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         toast.error((e as Error).message || "Generation failed");
-        patchBuild({ done: true, error: (e as Error).message, progress: 100, phase: "Failed" });
+        patchBuild({
+          done: true,
+          error: (e as Error).message,
+          progress: 100,
+          phase: "Failed",
+          phaseIndex: phaseIdxRef.current,
+        });
       } else {
-        patchBuild({ done: true, error: "Build stopped before completion.", phase: "Stopped" });
+        patchBuild({
+          done: true,
+          error: "Build stopped before completion.",
+          phase: "Stopped",
+          phaseIndex: phaseIdxRef.current,
+        });
       }
       return null;
     } finally {
@@ -329,7 +376,7 @@ function BuilderApp() {
     const buildMsg: Msg = {
       role: "assistant",
       content: "",
-      build: { phase: PHASE_LABELS[0], progress: 3, done: false },
+      build: { phase: PHASE_LABELS[0], phaseIndex: 0, progress: 3, done: false },
     };
     const next = [...messages, userMsg];
     setMessages([...next, buildMsg]);
@@ -396,11 +443,7 @@ function BuilderApp() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar
-        projectName={projectName}
-        setProjectName={setProjectName}
-        versionCount={versions.length}
-      />
+      <BuilderTopBar projectName={projectName} setProjectName={setProjectName} versionCount={versions.length} />
       <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
         {/* Chat */}
         <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
@@ -438,9 +481,7 @@ function BuilderApp() {
 
           {showHistory && versions.length > 0 && (
             <div className="border-b border-border bg-background/60 max-h-56 overflow-y-auto p-3 space-y-1.5">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">
-                Versions
-              </p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">Versions</p>
               {versions
                 .slice()
                 .reverse()
@@ -647,16 +688,15 @@ function BuilderApp() {
                 onClick={async () => {
                   try {
                     const dataUrl =
-                      "data:text/html;charset=utf-8;base64," +
-                      btoa(
-                        unescape(encodeURIComponent(generatedHtml)),
-                      );
+                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
                     if (navigator.share) {
-                      await navigator.share({
-                        title: projectName,
-                        text: "Check out what I made with Breezy",
-                        url: dataUrl,
-                      }).catch(() => {});
+                      await navigator
+                        .share({
+                          title: projectName,
+                          text: "Check out what I made with Breezy",
+                          url: dataUrl,
+                        })
+                        .catch(() => {});
                     } else {
                       await navigator.clipboard.writeText(dataUrl);
                       toast.success("Share link copied — paste it anywhere");
@@ -678,11 +718,11 @@ function BuilderApp() {
                     const url = URL.createObjectURL(blob);
                     window.open(url, "_blank");
                     const dataUrl =
-                      "data:text/html;charset=utf-8;base64," +
-                      btoa(unescape(encodeURIComponent(generatedHtml)));
+                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
                     await navigator.clipboard.writeText(dataUrl).catch(() => {});
                     toast.success("Site opened in a new tab — share link copied", {
-                      description: "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
+                      description:
+                        "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
                     });
                     setTimeout(() => URL.revokeObjectURL(url), 60000);
                   } catch {
@@ -721,10 +761,7 @@ function BuilderTopBar({
 }) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
+      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeft className="size-4" /> Back
       </Link>
       <div className="size-6 w-px bg-border" />
@@ -814,9 +851,9 @@ function MessageContent({ text }: { text: string }) {
 
 function BuildCard({ build }: { build: BuildStatus }) {
   const steps = PHASES;
-  const activeIdx = Math.min(steps.length - 1, Math.floor((build.progress / 100) * steps.length));
+  const activeIdx = Math.min(steps.length - 1, build.phaseIndex ?? Math.floor((build.progress / 100) * steps.length));
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full">
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full transition-opacity duration-300">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="relative flex size-2">
@@ -827,13 +864,11 @@ function BuildCard({ build }: { build: BuildStatus }) {
               className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`}
             />
           </span>
-          <span className="text-sm font-semibold">
+          <span className="text-sm font-semibold transition-all duration-300">
             {build.done ? (build.error ? "Build failed" : "Site ready") : "Building your site"}
           </span>
         </div>
-        <span className="text-xs font-mono text-muted-foreground tabular-nums">
-          {build.progress}%
-        </span>
+        <span className="text-xs font-mono text-muted-foreground tabular-nums">{build.progress}%</span>
       </div>
 
       {/* Progress bar */}
@@ -844,16 +879,27 @@ function BuildCard({ build }: { build: BuildStatus }) {
         />
       </div>
 
-      {/* Phase list */}
+      {/* Phase list — driven by streamed HTML phase index */}
       <ul className="space-y-1.5 pt-1">
         {steps.map((s, i) => {
           const label = s.label;
           const done = build.done ? !build.error : i < activeIdx;
           const active = !build.done && i === activeIdx;
           return (
-            <li key={s.id} className="flex items-center gap-2 text-xs">
+            <li
+              key={s.id}
+              className={`flex items-center gap-2 text-xs transition-all duration-300 ease-out ${
+                active ? "opacity-100 translate-x-0" : done ? "opacity-70" : "opacity-50"
+              }`}
+            >
               <span
-                className={`size-4 rounded-full grid place-items-center shrink-0 ${done ? "bg-mint text-ink" : active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
+                className={`size-4 rounded-full grid place-items-center shrink-0 transition-colors duration-300 ${
+                  done
+                    ? "bg-mint text-ink"
+                    : active
+                      ? "bg-primary/15 text-primary ring-2 ring-primary/20"
+                      : "bg-muted text-muted-foreground"
+                }`}
               >
                 {done ? (
                   <Check className="size-2.5" strokeWidth={3} />
@@ -864,13 +910,13 @@ function BuildCard({ build }: { build: BuildStatus }) {
                 )}
               </span>
               <span
-                className={
+                className={`transition-colors duration-300 ${
                   done
                     ? "text-muted-foreground line-through decoration-muted-foreground/40"
                     : active
                       ? "text-foreground font-medium"
                       : "text-muted-foreground"
-                }
+                }`}
               >
                 {active ? `${label}…` : label}
               </span>
@@ -892,9 +938,7 @@ function Message({ msg }: { msg: Msg }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
-        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">
-          {msg.content}
-        </div>
+        <div className="rounded-2xl rounded-tr-sm bg-ink text-cream px-4 py-2.5 text-sm max-w-[85%]">{msg.content}</div>
       </div>
     );
   }
@@ -934,13 +978,13 @@ function PreviewCanvas({
             <span className="size-2.5 rounded-full bg-butter" />
             <span className="size-2.5 rounded-full bg-mint" />
           </div>
-          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">
-            untitled.breezy.app
-          </div>
+          <div className="ml-3 text-xs text-muted-foreground font-mono flex-1 truncate">untitled.breezy.app</div>
           {generating && (
-            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 transition-opacity duration-300">
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-              {build?.phase} · {build?.progress}%
+              <span key={build?.phase} className="transition-opacity duration-300">
+                {build?.phase} · {build?.progress}%
+              </span>
             </span>
           )}
         </div>
