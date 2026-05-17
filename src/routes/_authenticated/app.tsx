@@ -172,6 +172,8 @@ type Version = { id: string; html: string; prompt: string; createdAt: number };
 
 const STORAGE_KEY = "breezy.project.v1";
 
+type ActivePanel = "chat" | "connectors" | "history" | "settings" | "publish";
+
 function BuilderApp() {
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
@@ -179,11 +181,20 @@ function BuilderApp() {
   const [view, setView] = useState<"preview" | "code">("preview");
   const [device, setDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
   const [generatedHtml, setGeneratedHtml] = useState<string>("");
+  const [liveHtml, setLiveHtml] = useState<string>(""); // last published snapshot
+  const [previewMode, setPreviewMode] = useState<"preview" | "live">("preview");
   const [versions, setVersions] = useState<Version[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [activePanel, setActivePanel] = useState<ActivePanel>("chat");
   const [projectName, setProjectName] = useState<string>("Untitled project");
+  const [planMode, setPlanMode] = useState<boolean>(true);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -195,44 +206,78 @@ function BuilderApp() {
     hydratedRef.current = true;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw) as {
-        messages?: Msg[];
-        versions?: Version[];
-        activeVersionId?: string;
-        name?: string;
-      };
-      if (data.messages?.length) setMessages(data.messages);
-      if (data.versions?.length) {
-        setVersions(data.versions);
-        const active =
-          data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
-        if (active) {
-          setActiveVersionId(active.id);
-          setGeneratedHtml(active.html);
+      if (raw) {
+        const data = JSON.parse(raw) as {
+          messages?: Msg[];
+          versions?: Version[];
+          activeVersionId?: string;
+          name?: string;
+          planMode?: boolean;
+          deployments?: Deployment[];
+          liveHtml?: string;
+        };
+        if (data.messages?.length) setMessages(data.messages);
+        if (data.versions?.length) {
+          setVersions(data.versions);
+          const active =
+            data.versions.find((v) => v.id === data.activeVersionId) ?? data.versions[data.versions.length - 1];
+          if (active) {
+            setActiveVersionId(active.id);
+            setGeneratedHtml(active.html);
+          }
         }
+        if (data.name) setProjectName(data.name);
+        if (typeof data.planMode === "boolean") setPlanMode(data.planMode);
+        if (data.deployments?.length) setDeployments(data.deployments);
+        if (data.liveHtml) setLiveHtml(data.liveHtml);
       }
-      if (data.name) setProjectName(data.name);
     } catch {
       /* ignore */
     }
+    setConnections(loadConnections());
   }, []);
 
   // Persist on change
   useEffect(() => {
     if (!hydratedRef.current) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, versions, activeVersionId, name: projectName }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          messages,
+          versions,
+          activeVersionId,
+          name: projectName,
+          planMode,
+          deployments,
+          liveHtml,
+        }),
+      );
     } catch {
-      /* quota: ignore */
+      /* quota */
     }
-  }, [messages, versions, activeVersionId, projectName]);
+  }, [messages, versions, activeVersionId, projectName, planMode, deployments, liveHtml]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Update the last assistant message's build status
+  // Keyboard shortcuts
+  useShortcuts({
+    onPlan: () => setPlanMode((p) => !p),
+    onPublish: () => setPublishOpen(true),
+    onFocusChat: () => {
+      setActivePanel("chat");
+      textareaRef.current?.focus();
+    },
+  });
+
+  const activeConnectorNames = useMemo(
+    () => CONNECTORS.filter((c) => isConnected(connections, c.id)).map((c) => c.name),
+    [connections],
+  );
+
+  // ── Build status helpers ─────────────────────────────────────────────
   const patchBuild = (patch: Partial<BuildStatus>) => {
     setMessages((prev) => {
       const copy = prev.slice();
@@ -240,6 +285,20 @@ function BuilderApp() {
         const m = copy[i];
         if (m.role === "assistant" && m.build) {
           copy[i] = { ...m, build: { ...m.build, ...patch } };
+          break;
+        }
+      }
+      return copy;
+    });
+  };
+
+  const patchPlan = (patch: Partial<PlanState>) => {
+    setMessages((prev) => {
+      const copy = prev.slice();
+      for (let i = copy.length - 1; i >= 0; i--) {
+        const m = copy[i];
+        if (m.role === "assistant" && m.plan) {
+          copy[i] = { ...m, plan: { ...m.plan, ...patch } };
           break;
         }
       }
@@ -260,28 +319,42 @@ function BuilderApp() {
     phaseTimerRef.current = null;
   };
 
-  const generate = async (history: Msg[], userPrompt: string) => {
+  // ── Generate (HTML stream) ───────────────────────────────────────────
+  const generate = async (history: Msg[], userPrompt: string): Promise<string | null> => {
     genAbortRef.current?.abort();
     const controller = new AbortController();
     genAbortRef.current = controller;
+
+    // Add a build placeholder right before we start (so plan card + build card live in same turn)
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "",
+        build: { phase: PHASE_LABELS[0], phaseIndex: 0, progress: 3, done: false },
+      },
+    ]);
     startPhaseTicker();
 
-    const baseHtml = generatedHtml; // edit base — preserved if request fails
+    const baseHtml = generatedHtml;
+    const connectorsCtx = connectorContextBlock(connections);
 
     const doFetch = () =>
       fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: history.filter((m) => m.content.trim()).map((m) => ({ role: m.role, content: m.content })),
+          messages: history
+            .filter((m) => m.content.trim())
+            .map((m) => ({ role: m.role, content: m.content })),
           currentHtml: baseHtml || undefined,
+          connectorsContext: connectorsCtx || undefined,
         }),
         signal: controller.signal,
       });
 
     try {
       let resp = await doFetch();
-      // Auto-retry once on 429 with a short backoff
       if (resp.status === 429) {
         patchBuild({ phase: "Rate-limited, retrying" });
         await new Promise((r) => setTimeout(r, 4000));
@@ -290,13 +363,7 @@ function BuilderApp() {
       if (!resp.ok || !resp.body) {
         const { error } = await resp.json().catch(() => ({ error: "Generation failed" }));
         toast.error(error || "Generation failed");
-        patchBuild({
-          done: true,
-          error: error || "Generation failed",
-          progress: 100,
-          phase: "Failed",
-          phaseIndex: PHASES.length - 1,
-        });
+        patchBuild({ done: true, error: error || "Generation failed", progress: 100, phase: "Failed", phaseIndex: PHASES.length - 1 });
         return null;
       }
 
@@ -310,16 +377,11 @@ function BuilderApp() {
         const { value, done } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
-
         const detected = detectPhase(html);
         phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
         const phaseIdx = phaseIdxRef.current;
-        const phaseLabel = PHASE_LABELS[phaseIdx];
         const pct = progressFromPhase(phaseIdx, html.length, TARGET);
-        patchBuild({ progress: pct, phase: phaseLabel, phaseIndex: phaseIdx });
-
-        // Live preview: as soon as we have a renderable body, push it.
-        // Throttle to roughly every 600 chars to avoid iframe thrash.
+        patchBuild({ progress: pct, phase: PHASE_LABELS[phaseIdx], phaseIndex: phaseIdx });
         if (html.length - lastPreviewLen > 600) {
           const live = previewableHtml(html);
           if (live) {
@@ -330,65 +392,32 @@ function BuilderApp() {
       }
       html += decoder.decode();
       stopPhaseTicker();
-      patchBuild({
-        phase: "Verifying completion",
-        phaseIndex: PHASES.length - 1,
-        progress: 98,
-      });
+      patchBuild({ phase: "Verifying completion", phaseIndex: PHASES.length - 1, progress: 98 });
       const marker = html.match(COMPLETION_MARKER_RE);
       const status = marker?.[1] ?? "missing-status";
       html = html.replace(COMPLETION_MARKER_RE, "");
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
-        // Roll back to base so we don't leave a half-rendered preview.
         setGeneratedHtml(baseHtml);
         const error =
-          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
+          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I'll keep the current version unchanged.";
         toast.error("Build was incomplete — kept the previous version");
-        patchBuild({
-          done: true,
-          error,
-          progress: 98,
-          phase: "Incomplete",
-          phaseIndex: phaseIdxRef.current,
-        });
+        patchBuild({ done: true, error, progress: 98, phase: "Incomplete", phaseIndex: phaseIdxRef.current });
         return null;
       }
       setGeneratedHtml(html);
-      // Push a new version
-      const v: Version = {
-        id: crypto.randomUUID(),
-        html,
-        prompt: userPrompt,
-        createdAt: Date.now(),
-      };
+      const v: Version = { id: crypto.randomUUID(), html, prompt: userPrompt, createdAt: Date.now() };
       setVersions((prev) => [...prev, v]);
       setActiveVersionId(v.id);
-      patchBuild({
-        progress: 100,
-        phase: "Finished and verified",
-        phaseIndex: PHASES.length - 1,
-        done: true,
-      });
+      patchBuild({ progress: 100, phase: "Finished and verified", phaseIndex: PHASES.length - 1, done: true });
       return html;
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         toast.error((e as Error).message || "Generation failed");
-        patchBuild({
-          done: true,
-          error: (e as Error).message,
-          progress: 100,
-          phase: "Failed",
-          phaseIndex: phaseIdxRef.current,
-        });
+        patchBuild({ done: true, error: (e as Error).message, progress: 100, phase: "Failed", phaseIndex: phaseIdxRef.current });
       } else {
-        patchBuild({
-          done: true,
-          error: "Build stopped before completion.",
-          phase: "Stopped",
-          phaseIndex: phaseIdxRef.current,
-        });
+        patchBuild({ done: true, error: "Build stopped before completion.", phase: "Stopped", phaseIndex: phaseIdxRef.current });
       }
       return null;
     } finally {
@@ -396,58 +425,113 @@ function BuilderApp() {
     }
   };
 
+  // ── Post-build summary ──────────────────────────────────────────────
+  const summarize = async (history: Msg[]) => {
+    const summaryController = new AbortController();
+    abortRef.current = summaryController;
+    let acc = "";
+    await streamChat({
+      messages: [
+        ...history,
+        {
+          role: "user",
+          content:
+            "I just generated a website for the request above. In 1–2 short, friendly sentences, tell me what you built and suggest one specific tweak I could ask for next. Do NOT describe the code or say the word 'HTML'.",
+        },
+      ],
+      signal: summaryController.signal,
+      onDelta: (chunk) => {
+        acc += chunk;
+        setMessages((prev) => {
+          const copy = prev.slice();
+          const last = copy[copy.length - 1];
+          if (last.role === "assistant") copy[copy.length - 1] = { ...last, content: acc };
+          return copy;
+        });
+      },
+      onError: () => {},
+      onDone: () => {},
+    });
+    abortRef.current = null;
+  };
+
+  // ── Plan flow ────────────────────────────────────────────────────────
+  const runPlan = async (history: Msg[], userPrompt: string) => {
+    // Append assistant plan placeholder
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: "",
+        plan: { plan: null, loading: true, status: "pending", userPrompt },
+      },
+    ]);
+    try {
+      const resp = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          connectorsContext: connectorContextBlock(connections) || undefined,
+        }),
+      });
+      const data = (await resp.json()) as Plan | { error: string };
+      if (!resp.ok || "error" in data) {
+        patchPlan({ loading: false, status: "skipped" });
+        toast.error("Plan failed — building directly");
+        return null;
+      }
+      patchPlan({ loading: false, plan: data });
+      return data;
+    } catch {
+      patchPlan({ loading: false, status: "skipped" });
+      return null;
+    }
+  };
+
+  const approvePlan = async (history: Msg[], userPrompt: string) => {
+    patchPlan({ status: "approved" });
+    setBusy(true);
+    const html = await generate(history, userPrompt);
+    if (html) {
+      await summarize([...history, { role: "assistant", content: "(built)" }]);
+    }
+    setBusy(false);
+  };
+
+  const skipPlan = () => {
+    patchPlan({ status: "skipped" });
+    setBusy(false);
+  };
+
+  // ── Send ────────────────────────────────────────────────────────────
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
 
+    setActivePanel("chat");
     const userMsg: Msg = { role: "user", content: trimmed };
-    const buildMsg: Msg = {
-      role: "assistant",
-      content: "",
-      build: { phase: PHASE_LABELS[0], phaseIndex: 0, progress: 3, done: false },
-    };
     const next = [...messages, userMsg];
-    setMessages([...next, buildMsg]);
+    setMessages(next);
     setInput("");
     setBusy(true);
 
-    // 1) Generate site (with live progress)
-    const html = await generate(next, trimmed);
-
-    // 2) Brief chat summary AFTER build (so it doesn't ramble while building)
-    if (html) {
-      const summaryController = new AbortController();
-      abortRef.current = summaryController;
-      let acc = "";
-      await streamChat({
-        messages: [
-          ...next,
-          {
-            role: "user",
-            content:
-              "I just generated a website for the request above. In 1–2 short, friendly sentences, tell me what you built and suggest one specific tweak I could ask for next. Do NOT describe the code or say the word 'HTML'.",
-          },
-        ],
-        signal: summaryController.signal,
-        onDelta: (chunk) => {
-          acc += chunk;
-          setMessages((prev) => {
-            const copy = prev.slice();
-            const last = copy[copy.length - 1];
-            if (last.role === "assistant") {
-              copy[copy.length - 1] = { ...last, content: acc };
-            }
-            return copy;
-          });
-        },
-        onError: () => {
-          /* silent — build already succeeded */
-        },
-        onDone: () => {},
-      });
-      abortRef.current = null;
+    // Edit-mode (existing site): skip plan, generate directly.
+    const isEdit = !!generatedHtml;
+    if (planMode && !isEdit) {
+      const plan = await runPlan(next, trimmed);
+      if (!plan) {
+        // Fallback: just generate
+        const html = await generate(next, trimmed);
+        if (html) await summarize(next);
+        setBusy(false);
+      }
+      // Leave busy=true; user must approve/skip to continue
+      return;
     }
 
+    const html = await generate(next, trimmed);
+    if (html) await summarize(next);
     setBusy(false);
   };
 
@@ -468,174 +552,68 @@ function BuilderApp() {
     return null;
   })();
 
+  const pendingPlanIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "assistant" && m.plan && m.plan.status === "pending" && !m.plan.loading) return i;
+    }
+    return -1;
+  })();
+
+  const resetAll = () => {
+    stop();
+    setMessages(STARTER);
+    setGeneratedHtml("");
+    setLiveHtml("");
+    setVersions([]);
+    setActiveVersionId(null);
+    setProjectName("Untitled project");
+    setDeployments([]);
+  };
+
+  const onPublish = (meta: { title: string; description: string; subdomain: string }) => {
+    const version = deployments.length + 1;
+    const url = `https://${meta.subdomain}.breezy.app`;
+    const d: Deployment = {
+      id: crypto.randomUUID(),
+      version,
+      url,
+      title: meta.title,
+      createdAt: Date.now(),
+    };
+    setDeployments((prev) => [d, ...prev]);
+    setLiveHtml(generatedHtml);
+    toast.success("Published 🚀", { description: url });
+  };
+
+  const displayedHtml = previewMode === "live" ? liveHtml : generatedHtml;
+
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar projectName={projectName} setProjectName={setProjectName} versionCount={versions.length} />
-      <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
-        {/* Chat */}
-        <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Layers className="size-4 text-muted-foreground" />
-              <span className="text-sm font-semibold">Conversation</span>
-            </div>
-            <div className="flex items-center gap-1">
-              {versions.length > 0 && (
-                <button
-                  onClick={() => setShowHistory((s) => !s)}
-                  className={`text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full transition ${showHistory ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  title="Version history"
-                >
-                  <History className="size-3.5" /> v{versions.length}
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  stop();
-                  setMessages(STARTER);
-                  setGeneratedHtml("");
-                  setVersions([]);
-                  setActiveVersionId(null);
-                  setShowHistory(false);
-                  setProjectName("Untitled project");
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
-              >
-                <Plus className="size-3.5" /> New
-              </button>
-            </div>
-          </div>
+      <BuilderTopBar
+        projectName={projectName}
+        setProjectName={setProjectName}
+        versionCount={versions.length}
+        previewMode={previewMode}
+        setPreviewMode={setPreviewMode}
+        hasLive={!!liveHtml}
+        onOpenPublish={() => setPublishOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      <div className="flex-1 grid grid-cols-[56px_1fr_400px] min-h-0">
+        {/* Icon rail */}
+        <IconRail
+          active={activePanel}
+          setActive={setActivePanel}
+          onOpenConnectors={() => setConnectorsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          versionCount={versions.length}
+          connectedCount={activeConnectorNames.length}
+        />
 
-          {showHistory && versions.length > 0 && (
-            <div className="border-b border-border bg-background/60 max-h-56 overflow-y-auto p-3 space-y-1.5">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pb-1">Versions</p>
-              {versions
-                .slice()
-                .reverse()
-                .map((v, idx) => {
-                  const realIdx = versions.length - idx;
-                  const active = v.id === activeVersionId;
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => {
-                        setGeneratedHtml(v.html);
-                        setActiveVersionId(v.id);
-                        toast.success(`Restored version ${realIdx}`);
-                      }}
-                      className={`w-full text-left rounded-xl border px-3 py-2 transition flex items-center gap-2 ${active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"}`}
-                    >
-                      <div
-                        className={`size-6 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-                      >
-                        v{realIdx}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(v.createdAt).toLocaleTimeString()}
-                        </p>
-                      </div>
-                      {active ? (
-                        <Check className="size-3.5 text-primary shrink-0" />
-                      ) : (
-                        <RotateCcw className="size-3 text-muted-foreground shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-            </div>
-          )}
-
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
-            {messages.map((m, i) => (
-              <Message key={i} msg={m} />
-            ))}
-            {messages.length === 1 && !busy && (
-              <div className="pt-2 grid gap-2">
-                {IDEAS.map((idea) => (
-                  <button
-                    key={idea}
-                    onClick={() => send(`I want to build ${idea}.`)}
-                    className="text-left text-sm rounded-2xl border border-border bg-card hover:bg-muted px-4 py-3 transition flex items-center justify-between group"
-                  >
-                    <span>{idea}</span>
-                    <Sparkles className="size-3.5 text-primary opacity-0 group-hover:opacity-100 transition" />
-                  </button>
-                ))}
-              </div>
-            )}
-            {!busy && generatedHtml && messages.length > 1 && (
-              <div className="pt-1 flex flex-wrap gap-1.5">
-                {[
-                  "Make it darker and more premium",
-                  "Add a testimonials section",
-                  "Try a different color palette",
-                  "Make the hero more bold",
-                  "Add a pricing section",
-                ].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => send(s)}
-                    className="text-xs rounded-full border border-border bg-card hover:bg-muted px-3 py-1.5 transition text-muted-foreground hover:text-foreground"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="p-4 border-t border-border bg-background/60">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                send(input);
-              }}
-              className="flex items-end gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 focus-within:ring-2 ring-primary/30 transition"
-            >
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send(input);
-                  }
-                }}
-                rows={1}
-                placeholder={busy ? "Breezy is building…" : "Describe a change…"}
-                className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
-              />
-              {busy ? (
-                <button
-                  type="button"
-                  onClick={stop}
-                  className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition"
-                  aria-label="Stop"
-                >
-                  <Square className="size-3.5 fill-cream" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition disabled:opacity-40 disabled:scale-100"
-                  aria-label="Send"
-                >
-                  <ArrowUp className="size-4" strokeWidth={2.5} />
-                </button>
-              )}
-            </form>
-            <p className="text-[11px] text-muted-foreground mt-2 px-1">
-              Shift + Enter for new line · Powered by Lovable AI
-            </p>
-          </div>
-        </aside>
-
-        {/* Canvas */}
-        <section className="flex flex-col min-h-0">
+        {/* Center canvas */}
+        <section className="flex flex-col min-h-0 border-r border-border">
           <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 bg-card/40">
             <div className="inline-flex rounded-full bg-muted p-1 text-xs font-semibold">
               <button
@@ -672,10 +650,10 @@ function BuilderApp() {
 
             <div className="flex items-center gap-1">
               <button
-                disabled={!generatedHtml}
+                disabled={!displayedHtml}
                 onClick={() => {
-                  navigator.clipboard.writeText(generatedHtml);
-                  toast.success("HTML copied to clipboard");
+                  navigator.clipboard.writeText(displayedHtml);
+                  toast.success("HTML copied");
                 }}
                 className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
                 title="Copy HTML"
@@ -683,9 +661,9 @@ function BuilderApp() {
                 <Copy className="size-3.5" /> Copy
               </button>
               <button
-                disabled={!generatedHtml}
+                disabled={!displayedHtml}
                 onClick={() => {
-                  const blob = new Blob([generatedHtml], { type: "text/html" });
+                  const blob = new Blob([displayedHtml], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
@@ -699,9 +677,9 @@ function BuilderApp() {
                 <Download className="size-3.5" /> Download
               </button>
               <button
-                disabled={!generatedHtml}
+                disabled={!displayedHtml}
                 onClick={() => {
-                  const blob = new Blob([generatedHtml], { type: "text/html" });
+                  const blob = new Blob([displayedHtml], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
                   window.open(url, "_blank");
                   setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -712,69 +690,323 @@ function BuilderApp() {
                 <ExternalLink className="size-3.5" /> Open
               </button>
               <button
-                disabled={!generatedHtml}
-                onClick={async () => {
-                  try {
-                    const dataUrl =
-                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
-                    if (navigator.share) {
-                      await navigator
-                        .share({
-                          title: projectName,
-                          text: "Check out what I made with Breezy",
-                          url: dataUrl,
-                        })
-                        .catch(() => {});
-                    } else {
-                      await navigator.clipboard.writeText(dataUrl);
-                      toast.success("Share link copied — paste it anywhere");
-                    }
-                  } catch {
-                    toast.error("Couldn't create a share link");
-                  }
+                disabled={!deployments[0]}
+                onClick={() => {
+                  if (!deployments[0]) return;
+                  navigator.clipboard.writeText(deployments[0].url);
+                  toast.success("Live URL copied");
                 }}
                 className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted disabled:opacity-40"
-                title="Copy a self-contained share link"
+                title="Share live URL"
               >
                 <Share2 className="size-3.5" /> Share
-              </button>
-              <button
-                disabled={!generatedHtml}
-                onClick={async () => {
-                  try {
-                    const blob = new Blob([generatedHtml], { type: "text/html" });
-                    const url = URL.createObjectURL(blob);
-                    window.open(url, "_blank");
-                    const dataUrl =
-                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
-                    await navigator.clipboard.writeText(dataUrl).catch(() => {});
-                    toast.success("Site opened in a new tab — share link copied", {
-                      description:
-                        "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
-                    });
-                    setTimeout(() => URL.revokeObjectURL(url), 60000);
-                  } catch {
-                    toast.error("Couldn't publish the preview");
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition disabled:opacity-40"
-                title="Open the site and copy a share link"
-              >
-                <Rocket className="size-3.5" /> Publish
               </button>
             </div>
           </div>
 
           <div className="flex-1 overflow-auto p-6 bg-gradient-to-br from-muted/30 via-background to-muted/30">
             {view === "preview" ? (
-              <PreviewCanvas device={device} html={generatedHtml} build={lastBuild} />
+              <PreviewCanvas device={device} html={displayedHtml} build={lastBuild} mode={previewMode} />
             ) : (
-              <CodeView html={generatedHtml} />
+              <CodeView html={displayedHtml} />
             )}
           </div>
         </section>
+
+        {/* Right side: chat / history / connectors-inline / settings */}
+        <aside className="flex flex-col bg-card/40 min-h-0">
+          {activePanel === "history" ? (
+            <HistoryPanel
+              versions={versions}
+              activeVersionId={activeVersionId}
+              onSelect={(v) => {
+                setGeneratedHtml(v.html);
+                setActiveVersionId(v.id);
+                toast.success(`Restored to v${versions.findIndex((x) => x.id === v.id) + 1}`);
+              }}
+            />
+          ) : (
+            <>
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers className="size-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold">Conversation</span>
+                </div>
+                <button
+                  onClick={resetAll}
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
+                >
+                  <Plus className="size-3.5" /> New
+                </button>
+              </div>
+
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
+                {messages.map((m, i) => (
+                  <Message
+                    key={i}
+                    msg={m}
+                    onApprovePlan={
+                      i === pendingPlanIdx && m.role === "assistant" && m.plan
+                        ? () => {
+                            const hist = messages.slice(0, i);
+                            approvePlan(hist, m.plan!.userPrompt);
+                          }
+                        : undefined
+                    }
+                    onSkipPlan={
+                      i === pendingPlanIdx && m.role === "assistant" && m.plan ? skipPlan : undefined
+                    }
+                  />
+                ))}
+                {messages.length === 1 && !busy && (
+                  <div className="pt-2 grid gap-2">
+                    {IDEAS.map((idea) => (
+                      <button
+                        key={idea}
+                        onClick={() => send(`I want to build ${idea}.`)}
+                        className="text-left text-sm rounded-2xl border border-border bg-card hover:bg-muted px-4 py-3 transition flex items-center justify-between group"
+                      >
+                        <span>{idea}</span>
+                        <Sparkles className="size-3.5 text-primary opacity-0 group-hover:opacity-100 transition" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!busy && generatedHtml && messages.length > 1 && pendingPlanIdx === -1 && (
+                  <div className="pt-1 flex flex-wrap gap-1.5">
+                    {[
+                      "Make it darker and more premium",
+                      "Add a testimonials section",
+                      "Try a different color palette",
+                      "Make the hero more bold",
+                    ].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => send(s)}
+                        className="text-xs rounded-full border border-border bg-card hover:bg-muted px-3 py-1.5 transition text-muted-foreground hover:text-foreground"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-border bg-background/60">
+                {activeConnectorNames.length > 0 && (
+                  <div className="mb-2 flex flex-wrap items-center gap-1 text-[10px]">
+                    <span className="text-muted-foreground">Context:</span>
+                    {activeConnectorNames.slice(0, 4).map((n) => (
+                      <span key={n} className="px-1.5 py-0.5 rounded-full bg-mint/30 text-ink font-semibold">
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    send(input);
+                  }}
+                  className="flex items-end gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 focus-within:ring-2 ring-primary/30 transition"
+                >
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        send(input);
+                      }
+                    }}
+                    rows={1}
+                    placeholder={busy ? "Breezy is working…" : planMode ? "Describe your idea — I'll plan first…" : "Describe a change…"}
+                    className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
+                  />
+                  {busy ? (
+                    <button
+                      type="button"
+                      onClick={stop}
+                      className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition"
+                      aria-label="Stop"
+                    >
+                      <Square className="size-3.5 fill-cream" />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      className="size-8 rounded-full bg-ink text-cream grid place-items-center hover:scale-105 transition disabled:opacity-40 disabled:scale-100"
+                      aria-label="Send"
+                    >
+                      <ArrowUp className="size-4" strokeWidth={2.5} />
+                    </button>
+                  )}
+                </form>
+                <div className="flex items-center justify-between mt-2 px-1">
+                  <button
+                    onClick={() => setPlanMode((p) => !p)}
+                    className={`text-[11px] inline-flex items-center gap-1.5 px-2 py-1 rounded-full transition ${planMode ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:bg-muted"}`}
+                    title="Toggle Plan mode (⌘P)"
+                  >
+                    <Wand2 className="size-3" /> Plan mode {planMode ? "on" : "off"}
+                  </button>
+                  <p className="text-[11px] text-muted-foreground">⌘+/ to focus · Shift+↵ newline</p>
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
+
+      <ConnectorsPanel
+        open={connectorsOpen}
+        onOpenChange={setConnectorsOpen}
+        connections={connections}
+        setConnections={setConnections}
+      />
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        projectName={projectName}
+        generatedHtml={generatedHtml}
+        deployments={deployments}
+        onPublish={onPublish}
+      />
+      <ProjectSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        projectName={projectName}
+        setProjectName={setProjectName}
+        onReset={resetAll}
+      />
+    </div>
+  );
+}
+
+function IconRail({
+  active,
+  setActive,
+  onOpenConnectors,
+  onOpenSettings,
+  versionCount,
+  connectedCount,
+}: {
+  active: ActivePanel;
+  setActive: (p: ActivePanel) => void;
+  onOpenConnectors: () => void;
+  onOpenSettings: () => void;
+  versionCount: number;
+  connectedCount: number;
+}) {
+  const items = [
+    { id: "chat" as const, Icon: MessageSquare, label: "Chat", badge: null as ReactNode },
+    {
+      id: "history" as const,
+      Icon: History,
+      label: "History",
+      badge: versionCount > 0 ? versionCount : null,
+    },
+  ];
+  return (
+    <div className="bg-ink text-cream/80 flex flex-col items-center py-3 gap-1 border-r border-border">
+      {items.map(({ id, Icon, label, badge }) => (
+        <button
+          key={id}
+          onClick={() => setActive(id)}
+          title={label}
+          className={`relative size-10 rounded-xl grid place-items-center transition ${
+            active === id ? "bg-cream/15 text-cream" : "hover:bg-cream/10"
+          }`}
+        >
+          <Icon className="size-4" />
+          {badge != null && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-[9px] font-bold text-primary-foreground grid place-items-center">
+              {badge}
+            </span>
+          )}
+        </button>
+      ))}
+      <button
+        onClick={onOpenConnectors}
+        title="Connectors"
+        className="relative size-10 rounded-xl grid place-items-center hover:bg-cream/10 transition"
+      >
+        <Plug className="size-4" />
+        {connectedCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-mint text-[9px] font-bold text-ink grid place-items-center">
+            {connectedCount}
+          </span>
+        )}
+      </button>
+
+      <div className="mt-auto flex flex-col gap-1">
+        <button
+          onClick={onOpenSettings}
+          title="Project settings"
+          className="size-10 rounded-xl grid place-items-center hover:bg-cream/10 transition"
+        >
+          <SettingsIcon className="size-4" />
+        </button>
       </div>
     </div>
+  );
+}
+
+function HistoryPanel({
+  versions,
+  activeVersionId,
+  onSelect,
+}: {
+  versions: Version[];
+  activeVersionId: string | null;
+  onSelect: (v: Version) => void;
+}) {
+  return (
+    <>
+      <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+        <History className="size-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">History</span>
+        <span className="text-[11px] text-muted-foreground ml-auto">{versions.length} versions</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+        {versions.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-10">
+            Versions appear here after each build.
+          </p>
+        )}
+        {versions
+          .slice()
+          .reverse()
+          .map((v, idx) => {
+            const realIdx = versions.length - idx;
+            const active = v.id === activeVersionId;
+            return (
+              <button
+                key={v.id}
+                onClick={() => onSelect(v)}
+                className={`w-full text-left rounded-xl border px-3 py-2.5 transition flex items-center gap-2.5 ${
+                  active ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-muted"
+                }`}
+              >
+                <div className={`size-7 rounded-md grid place-items-center text-[10px] font-mono shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  v{realIdx}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{v.prompt || "Update"}</p>
+                  <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleString()}</p>
+                </div>
+                {active ? (
+                  <Check className="size-3.5 text-primary shrink-0" />
+                ) : (
+                  <RotateCcw className="size-3 text-muted-foreground shrink-0" />
+                )}
+              </button>
+            );
+          })}
+      </div>
+    </>
   );
 }
 
@@ -782,10 +1014,20 @@ function BuilderTopBar({
   projectName,
   setProjectName,
   versionCount,
+  previewMode,
+  setPreviewMode,
+  hasLive,
+  onOpenPublish,
+  onOpenSettings,
 }: {
   projectName: string;
   setProjectName: (n: string) => void;
   versionCount: number;
+  previewMode: "preview" | "live";
+  setPreviewMode: (m: "preview" | "live") => void;
+  hasLive: boolean;
+  onOpenPublish: () => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
@@ -800,20 +1042,55 @@ function BuilderTopBar({
         <span className="font-display font-bold">breezy</span>
       </Link>
       <div className="size-6 w-px bg-border" />
-      <input
-        value={projectName}
-        onChange={(e) => setProjectName(e.target.value)}
-        className="bg-transparent text-sm font-medium outline-none focus:bg-muted px-2 py-1 rounded-md max-w-[220px]"
-      />
+      <button
+        onClick={onOpenSettings}
+        className="group inline-flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-md hover:bg-muted transition"
+        title="Open project settings"
+      >
+        {projectName}
+        <Pencil className="size-3 opacity-0 group-hover:opacity-60" />
+      </button>
       {versionCount > 0 && (
         <span className="text-[11px] text-muted-foreground font-mono px-1.5 py-0.5 rounded bg-muted">
           v{versionCount}
         </span>
       )}
+
+      {/* Live / Preview toggle */}
+      {hasLive && (
+        <div className="ml-3 inline-flex rounded-full bg-muted p-0.5 text-[11px] font-semibold">
+          <button
+            onClick={() => setPreviewMode("preview")}
+            className={`px-2.5 py-1 rounded-full transition ${previewMode === "preview" ? "bg-card shadow-soft" : "text-muted-foreground"}`}
+          >
+            Preview
+          </button>
+          <button
+            onClick={() => setPreviewMode("live")}
+            className={`px-2.5 py-1 rounded-full transition inline-flex items-center gap-1 ${previewMode === "live" ? "bg-card shadow-soft" : "text-muted-foreground"}`}
+          >
+            <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Live
+          </button>
+        </div>
+      )}
+
       <div className="ml-auto flex items-center gap-2">
         <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Auto-saved
         </span>
+        <input
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          className="hidden"
+          aria-hidden
+        />
+        <button
+          onClick={onOpenPublish}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition"
+          title="Publish (⌘⇧P)"
+        >
+          {hasLive ? <Globe className="size-3.5" /> : <Rocket className="size-3.5" />} {hasLive ? "Update" : "Publish"}
+        </button>
         <div className="size-8 rounded-full bg-gradient-cool border-2 border-background" />
       </div>
     </div>
