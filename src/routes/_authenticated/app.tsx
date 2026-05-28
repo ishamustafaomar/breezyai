@@ -145,9 +145,13 @@ type BuildStatus = {
   progress: number; // 0-100
   done: boolean;
   error?: string;
+  mode?: "build" | "edit";
 };
 
-type Msg = { role: "user"; content: string } | { role: "assistant"; content: string; build?: BuildStatus };
+type Msg =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; build?: BuildStatus; clarify?: string[] };
+
 
 const STARTER: Msg[] = [
   {
