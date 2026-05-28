@@ -14,6 +14,12 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Breezy is the friendliest AI builder for shipping web apps. Describe it, watch it appear, tweak it live." },
       { property: "og:title", content: "Breezy — Vibe-code beautiful apps" },
       { property: "og:description", content: "The friendliest AI builder for shipping web apps. Describe, see, ship." },
+      { property: "og:url", content: "https://breezyai.dev/" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+    links: [
+      { rel: "canonical", href: "https://breezyai.dev/" },
     ],
   }),
   component: Landing,
