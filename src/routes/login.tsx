@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -37,7 +37,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const navigate = useNavigate();
+  // navigate unused — we use a hard redirect to avoid auth race conditions.
   const search = Route.useSearch();
   const redirectTo = safeRedirect(search.redirect);
   const navigated = useRef(false);
