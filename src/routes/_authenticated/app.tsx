@@ -743,7 +743,8 @@ function BuilderApp() {
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
-              <Message key={i} msg={m} />
+              <Message key={i} msg={m} onChip={(t) => send(t)} />
+
             ))}
             {messages.length === 1 && !busy && (
               <div className="pt-2 grid gap-2">
