@@ -67,7 +67,7 @@ function Hero() {
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Link
-              to="/app"
+              to="/dashboard"
               className="group inline-flex items-center gap-2 rounded-full bg-ink text-cream px-6 py-3.5 font-semibold shadow-glow hover:scale-[1.03] transition-all"
             >
               Start building free
@@ -268,7 +268,7 @@ function FinalCTA() {
         No credit card. No installs. Just type your first idea — Breezy will do the rest.
       </p>
       <Link
-        to="/app"
+        to="/dashboard"
         className="inline-flex items-center gap-2 rounded-full bg-ink text-cream px-7 py-4 font-semibold shadow-glow hover:scale-[1.04] transition-all text-lg"
       >
         Open the builder
