@@ -1,11 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Sparkles, ArrowRight, LogOut } from "lucide-react";
+import { Plus, Trash2, Sparkles, ArrowRight, LogOut, Globe } from "lucide-react";
 import { listProjects, deleteProject, newProjectId, type ProjectMeta } from "@/lib/projects";
 import { useAuth } from "@/hooks/use-auth";
 import { BreezyLogo } from "@/components/breezy-logo";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -21,10 +22,28 @@ function DashboardPage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [subdomains, setSubdomains] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setProjects(listProjects());
+    const list = listProjects();
+    setProjects(list);
+    // Load published subdomains for these projects
+    (async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return;
+      const { data } = await supabase
+        .from("sites")
+        .select("project_id, subdomain, html_content")
+        .eq("user_id", u.user.id)
+        .not("html_content", "is", null);
+      if (data) {
+        const map: Record<string, string> = {};
+        for (const r of data) if (r.subdomain) map[r.project_id] = r.subdomain;
+        setSubdomains(map);
+      }
+    })();
   }, []);
+
 
   const createNew = () => {
     const id = newProjectId();
@@ -138,9 +157,22 @@ function DashboardPage() {
                     {p.name}
                     {p.hasHtml && <Sparkles className="size-3.5 text-primary shrink-0" />}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {formatRelative(p.updatedAt)}
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
+                    <span>{formatRelative(p.updatedAt)}</span>
+                    {subdomains[p.id] && (
+                      <a
+                        href={`/s/${subdomains[p.id]}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 text-[10px] font-semibold truncate max-w-[60%]"
+                        title={`/s/${subdomains[p.id]}`}
+                      >
+                        <Globe className="size-2.5" /> {subdomains[p.id]}
+                      </a>
+                    )}
                   </div>
+
                 </div>
               </Link>
             ))}

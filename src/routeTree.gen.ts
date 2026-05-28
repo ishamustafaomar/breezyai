@@ -13,6 +13,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SSubdomainRouteImport } from './routes/s.$subdomain'
 import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -39,6 +40,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SSubdomainRoute = SSubdomainRouteImport.update({
+  id: '/s/$subdomain',
+  path: '/s/$subdomain',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGenerateRoute = ApiGenerateRouteImport.update({
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/s/$subdomain': typeof SSubdomainRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
   '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/status': typeof ApiDomainsStatusRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/s/$subdomain': typeof SSubdomainRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
   '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/status': typeof ApiDomainsStatusRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/s/$subdomain': typeof SSubdomainRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
   '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/status': typeof ApiDomainsStatusRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/chat'
     | '/api/generate'
+    | '/s/$subdomain'
     | '/api/domains/add'
     | '/api/domains/remove'
     | '/api/domains/status'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/chat'
     | '/api/generate'
+    | '/s/$subdomain'
     | '/api/domains/add'
     | '/api/domains/remove'
     | '/api/domains/status'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/api/chat'
     | '/api/generate'
+    | '/s/$subdomain'
     | '/api/domains/add'
     | '/api/domains/remove'
     | '/api/domains/status'
@@ -173,6 +185,7 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
+  SSubdomainRoute: typeof SSubdomainRoute
   ApiDomainsAddRoute: typeof ApiDomainsAddRoute
   ApiDomainsRemoveRoute: typeof ApiDomainsRemoveRoute
   ApiDomainsStatusRoute: typeof ApiDomainsStatusRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/s/$subdomain': {
+      id: '/s/$subdomain'
+      path: '/s/$subdomain'
+      fullPath: '/s/$subdomain'
+      preLoaderRoute: typeof SSubdomainRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/generate': {
@@ -289,6 +309,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGenerateRoute: ApiGenerateRoute,
+  SSubdomainRoute: SSubdomainRoute,
   ApiDomainsAddRoute: ApiDomainsAddRoute,
   ApiDomainsRemoveRoute: ApiDomainsRemoveRoute,
   ApiDomainsStatusRoute: ApiDomainsStatusRoute,

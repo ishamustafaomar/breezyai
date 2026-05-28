@@ -45,6 +45,8 @@ import {
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 import { CustomDomainDialog } from "@/components/custom-domain-dialog";
+import { publishProject, getPublishedSubdomain } from "@/lib/publish";
+
 import { projectStorageKey, upsertProjectMeta, newProjectId, type ProjectMeta } from "@/lib/projects";
 
 const PUBLISHED_KEY = "breezy.published.v1";
@@ -284,6 +286,9 @@ function BuilderApp() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -322,6 +327,22 @@ function BuilderApp() {
       /* ignore */
     }
   }, [projectId]);
+
+  // Load existing published subdomain (if any) for this project
+  useEffect(() => {
+    let cancelled = false;
+    getPublishedSubdomain(projectId)
+      .then((sub) => {
+        if (!cancelled && sub && typeof window !== "undefined") {
+          setPublishedUrl(`${window.location.origin}/s/${sub}`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
 
   // Persist this project + bump the projects index on change
   useEffect(() => {
@@ -558,7 +579,16 @@ function BuilderApp() {
         phaseIndex: phaseList.length - 1,
         done: true,
       });
+      if (!isPro()) {
+        const { remaining } = bumpCredit();
+        if (remaining <= 2) {
+          toast.message(`${remaining} prompt${remaining === 1 ? "" : "s"} left today`, {
+            description: remaining === 0 ? "Upgrade to Pro for unlimited." : undefined,
+          });
+        }
+      }
       return html;
+
 
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
@@ -601,6 +631,19 @@ function BuilderApp() {
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
+
+    // Credit gate: free users get DAILY_CREDITS prompts per day.
+    if (!isPro()) {
+      const { used } = getCreditState();
+      if (used >= DAILY_CREDITS) {
+        toast.error(`Daily limit reached (${DAILY_CREDITS}/day)`, {
+          description: "Upgrade to Pro for unlimited prompts.",
+          action: { label: "Upgrade", onClick: () => navigate({ to: "/pricing" }) },
+        });
+        return;
+      }
+    }
+
 
     // Slash commands
     if (trimmed.startsWith("/")) {
@@ -985,46 +1028,68 @@ function BuilderApp() {
               >
                 <Share2 className="size-3.5" /> Share
               </button>
+              {publishedUrl && (
+                <a
+                  href={publishedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20"
+                  title={publishedUrl}
+                >
+                  <Globe className="size-3.5" /> Live
+                </a>
+              )}
+
               <button
-                disabled={!generatedHtml}
+                disabled={!generatedHtml || publishing}
                 onClick={async () => {
+                  if (!generatedHtml) return;
+                  setPublishing(true);
                   try {
-                    const blob = new Blob([generatedHtml], { type: "text/html" });
-                    const url = URL.createObjectURL(blob);
-                    window.open(url, "_blank");
-                    const dataUrl =
-                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
-                    await navigator.clipboard.writeText(dataUrl).catch(() => {});
+                    const result = await publishProject({
+                      projectId,
+                      name: projectName || "Untitled",
+                      html: generatedHtml,
+                    });
+                    setPublishedUrl(result.url);
+                    window.open(result.url, "_blank");
+                    await navigator.clipboard.writeText(result.url).catch(() => {});
                     const firstTime = !localStorage.getItem(PUBLISHED_KEY);
                     if (firstTime) {
                       localStorage.setItem(PUBLISHED_KEY, String(Date.now()));
                       fireConfetti();
-                      toast.success("🎉 First publish! Site opened in a new tab", {
-                        description: "Share link copied. For a real custom domain, publish from the Lovable workspace.",
-                      });
-                    } else {
-                      toast.success("Site opened in a new tab — share link copied", {
-                        description:
-                          "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
-                      });
                     }
-                    setTimeout(() => URL.revokeObjectURL(url), 60000);
-                  } catch {
-                    toast.error("Couldn't publish the preview");
+                    toast.success(`Live at /s/${result.subdomain}`, {
+                      description: "Link copied. Anyone can visit this URL.",
+                    });
+                  } catch (e) {
+                    toast.error((e as Error).message || "Couldn't publish");
+                  } finally {
+                    setPublishing(false);
                   }
                 }}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition disabled:opacity-40"
-                title="Open the site and copy a share link"
+                title="Publish this project to a public subdomain"
               >
-                <Rocket className="size-3.5" /> Publish
+                <Rocket className="size-3.5" /> {publishing ? "Publishing…" : "Publish"}
               </button>
               <button
-                onClick={() => setDomainOpen(true)}
+                onClick={() => {
+                  if (!isPro()) {
+                    toast.error("Custom domains are a Pro feature", {
+                      description: "Upgrade to connect your own domain.",
+                      action: { label: "Upgrade", onClick: () => navigate({ to: "/pricing" }) },
+                    });
+                    return;
+                  }
+                  setDomainOpen(true);
+                }}
                 className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
-                title="Connect a custom domain"
+                title={isPro() ? "Connect a custom domain" : "Pro only — connect a custom domain"}
               >
-                <Globe className="size-3.5" /> Domain
+                <Globe className="size-3.5" /> Domain {!isPro() && <span className="text-[10px] font-bold text-primary ml-0.5">PRO</span>}
               </button>
+
             </div>
           </div>
 
