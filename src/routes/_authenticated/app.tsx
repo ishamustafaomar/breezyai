@@ -284,6 +284,9 @@ function BuilderApp() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
