@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
+import confetti from "canvas-confetti";
 import {
   Sparkles,
   ArrowUp,
@@ -22,9 +23,68 @@ import {
   History,
   ExternalLink,
   RotateCcw,
+  Plug,
+  Keyboard,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Github,
+  CreditCard,
+  Database,
+  Mail,
+  BarChart3,
+  Cloud,
+  MessageSquare,
+  Image as ImageIcon,
+  Webhook,
+  Globe,
+  Bot,
+  Slack,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
+
+const PUBLISHED_KEY = "breezy.published.v1";
+
+const SLASH_COMMANDS = [
+  { cmd: "/dark", desc: "Switch to a dark theme", prompt: "Redesign with a dark, premium theme — deep backgrounds, vivid accents." },
+  { cmd: "/light", desc: "Switch to a light theme", prompt: "Redesign with a clean, light, airy theme." },
+  { cmd: "/bold", desc: "Make the design bolder", prompt: "Make the hero and typography dramatically bolder and more confident." },
+  { cmd: "/minimal", desc: "Strip back to minimal", prompt: "Simplify to a minimal, editorial layout with lots of whitespace." },
+  { cmd: "/testimonials", desc: "Add testimonials", prompt: "Add a testimonials section with 3 quotes and author avatars." },
+  { cmd: "/pricing", desc: "Add pricing tiers", prompt: "Add a 3-tier pricing section with a recommended plan." },
+  { cmd: "/faq", desc: "Add an FAQ", prompt: "Add an accordion FAQ section with 5 common questions." },
+  { cmd: "/footer", desc: "Add a rich footer", prompt: "Add a rich multi-column footer with links, social icons, and a newsletter signup." },
+  { cmd: "/clear", desc: "Start a fresh project", prompt: "__CLEAR__" },
+];
+
+const CONNECTORS: { name: string; desc: string; Icon: typeof Github; tier: 1 | 2 }[] = [
+  { name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, tier: 1 },
+  { name: "GitHub", desc: "Sync code to a repo", Icon: Github, tier: 1 },
+  { name: "Supabase", desc: "Database & auth", Icon: Database, tier: 1 },
+  { name: "Resend", desc: "Transactional email", Icon: Mail, tier: 1 },
+  { name: "PostHog", desc: "Product analytics", Icon: BarChart3, tier: 1 },
+  { name: "Cloudflare", desc: "Custom domains & CDN", Icon: Cloud, tier: 1 },
+  { name: "OpenAI", desc: "AI features in your app", Icon: Bot, tier: 1 },
+  { name: "Slack", desc: "Notifications to a channel", Icon: Slack, tier: 1 },
+  { name: "Linear", desc: "Sync issues from feedback", Icon: MessageSquare, tier: 2 },
+  { name: "Notion", desc: "Pull content from a page", Icon: FileCode2, tier: 2 },
+  { name: "Figma", desc: "Import a frame as a design", Icon: ImageIcon, tier: 2 },
+  { name: "Sentry", desc: "Error monitoring", Icon: Webhook, tier: 2 },
+  { name: "Vercel", desc: "Deploy to your account", Icon: Globe, tier: 2 },
+  { name: "Discord", desc: "Community webhook", Icon: MessageSquare, tier: 2 },
+];
+
+function fireConfetti() {
+  const duration = 1500;
+  const end = Date.now() + duration;
+  const colors = ["#f97316", "#fb923c", "#fde68a", "#34d399", "#60a5fa"];
+  (function frame() {
+    confetti({ particleCount: 4, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors });
+    confetti({ particleCount: 4, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
+}
 
 export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
