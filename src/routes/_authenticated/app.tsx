@@ -602,6 +602,19 @@ function BuilderApp() {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
 
+    // Credit gate: free users get DAILY_CREDITS prompts per day.
+    if (!isPro()) {
+      const { used } = getCreditState();
+      if (used >= DAILY_CREDITS) {
+        toast.error(`Daily limit reached (${DAILY_CREDITS}/day)`, {
+          description: "Upgrade to Pro for unlimited prompts.",
+          action: { label: "Upgrade", onClick: () => navigate({ to: "/pricing" }) },
+        });
+        return;
+      }
+    }
+
+
     // Slash commands
     if (trimmed.startsWith("/")) {
       const cmd = SLASH_COMMANDS.find((c) => c.cmd === trimmed.split(/\s+/)[0].toLowerCase());
