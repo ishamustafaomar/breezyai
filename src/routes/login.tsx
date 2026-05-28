@@ -10,10 +10,27 @@ import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
 function safeRedirect(value: unknown) {
-  if (typeof value !== "string" || !value.startsWith("/")) return "/dashboard";
-  if (value.startsWith("//") || value.startsWith("/~oauth")) return "/dashboard";
+  if (typeof value !== "string") return "/dashboard";
+  // Accept same-origin absolute URLs by extracting pathname+search.
+  if (typeof window !== "undefined" && /^https?:\/\//i.test(value)) {
+    try {
+      const u = new URL(value);
+      if (u.origin === window.location.origin) {
+        const path = u.pathname + u.search;
+        if (path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/~oauth")) {
+          return path || "/dashboard";
+        }
+      }
+    } catch {
+      return "/dashboard";
+    }
+    return "/dashboard";
+  }
+  if (!value.startsWith("/")) return "/dashboard";
+  if (value.startsWith("//") || value.startsWith("/~oauth") || value.startsWith("/login")) return "/dashboard";
   return value;
 }
+
 
 export const Route = createFileRoute("/login")({
   validateSearch: (s: Record<string, unknown>) => ({
