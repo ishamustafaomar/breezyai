@@ -885,13 +885,28 @@ function BuilderTopBar({
   projectName,
   setProjectName,
   versionCount,
+  sidebarOpen,
+  onToggleSidebar,
+  onOpenConnectors,
+  onOpenShortcuts,
 }: {
   projectName: string;
   setProjectName: (n: string) => void;
   versionCount: number;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  onOpenConnectors: () => void;
+  onOpenShortcuts: () => void;
 }) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
+      <button
+        onClick={onToggleSidebar}
+        className="size-8 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground"
+        title={sidebarOpen ? "Hide chat (⌘B)" : "Show chat (⌘B)"}
+      >
+        {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+      </button>
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeft className="size-4" /> Back
       </Link>
@@ -914,6 +929,20 @@ function BuilderTopBar({
         </span>
       )}
       <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onOpenConnectors}
+          className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+          title="Connectors (⌘⇧P)"
+        >
+          <Plug className="size-3.5" /> Connectors
+        </button>
+        <button
+          onClick={onOpenShortcuts}
+          className="size-8 grid place-items-center rounded-full hover:bg-muted text-muted-foreground"
+          title="Keyboard shortcuts (⌘/)"
+        >
+          <Keyboard className="size-4" />
+        </button>
         <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Auto-saved
         </span>
