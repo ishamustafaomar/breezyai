@@ -69,22 +69,51 @@ const SLASH_COMMANDS = [
   { cmd: "/clear", desc: "Start a fresh project", prompt: "__CLEAR__" },
 ];
 
-const CONNECTORS: { name: string; desc: string; Icon: typeof Github; tier: 1 | 2 }[] = [
-  { name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, tier: 1 },
-  { name: "GitHub", desc: "Sync code to a repo", Icon: Github, tier: 1 },
-  { name: "Supabase", desc: "Database & auth", Icon: Database, tier: 1 },
-  { name: "Resend", desc: "Transactional email", Icon: Mail, tier: 1 },
-  { name: "PostHog", desc: "Product analytics", Icon: BarChart3, tier: 1 },
-  { name: "Cloudflare", desc: "Custom domains & CDN", Icon: Cloud, tier: 1 },
-  { name: "OpenAI", desc: "AI features in your app", Icon: Bot, tier: 1 },
-  { name: "Slack", desc: "Notifications to a channel", Icon: Slack, tier: 1 },
-  { name: "Linear", desc: "Sync issues from feedback", Icon: MessageSquare, tier: 2 },
-  { name: "Notion", desc: "Pull content from a page", Icon: FileCode2, tier: 2 },
-  { name: "Figma", desc: "Import a frame as a design", Icon: ImageIcon, tier: 2 },
-  { name: "Sentry", desc: "Error monitoring", Icon: Webhook, tier: 2 },
-  { name: "Vercel", desc: "Deploy to your account", Icon: Globe, tier: 2 },
-  { name: "Discord", desc: "Community webhook", Icon: MessageSquare, tier: 2 },
+type ApiKeyConnector = { id: string; name: string; desc: string; Icon: typeof Github; envHint: string };
+const API_KEY_CONNECTORS: ApiKeyConnector[] = [
+  { id: "openai", name: "OpenAI", desc: "GPT models, embeddings, DALL·E", Icon: Bot, envHint: "OPENAI_API_KEY" },
+  { id: "anthropic", name: "Anthropic", desc: "Claude models", Icon: Bot, envHint: "ANTHROPIC_API_KEY" },
+  { id: "elevenlabs", name: "ElevenLabs", desc: "AI voices & text-to-speech", Icon: MessageSquare, envHint: "ELEVENLABS_API_KEY" },
+  { id: "replicate", name: "Replicate", desc: "Run any open-source model", Icon: ImageIcon, envHint: "REPLICATE_API_TOKEN" },
+  { id: "stripe", name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, envHint: "STRIPE_SECRET_KEY" },
+  { id: "resend", name: "Resend", desc: "Transactional email", Icon: Mail, envHint: "RESEND_API_KEY" },
+  { id: "posthog", name: "PostHog", desc: "Product analytics", Icon: BarChart3, envHint: "POSTHOG_API_KEY" },
+  { id: "supabase", name: "Supabase", desc: "Database service key", Icon: Database, envHint: "SUPABASE_SERVICE_ROLE" },
+  { id: "openrouter", name: "OpenRouter", desc: "Multi-model AI router", Icon: Bot, envHint: "OPENROUTER_API_KEY" },
+  { id: "groq", name: "Groq", desc: "Ultra-fast LLM inference", Icon: Bot, envHint: "GROQ_API_KEY" },
+  { id: "cloudflare", name: "Cloudflare", desc: "Workers, R2, KV", Icon: Cloud, envHint: "CLOUDFLARE_API_TOKEN" },
+  { id: "slack", name: "Slack Webhook", desc: "Post to a channel", Icon: Slack, envHint: "SLACK_WEBHOOK_URL" },
 ];
+
+const CREDIT_KEY = "breezy.credits.v1";
+const DAILY_CREDITS = 5;
+const PRO_KEY = "breezy.pro.v1";
+const KEYS_STORAGE = "breezy.apikeys.v1";
+
+function getCreditState(): { date: string; used: number } {
+  if (typeof window === "undefined") return { date: "", used: 0 };
+  try {
+    const raw = localStorage.getItem(CREDIT_KEY);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!raw) return { date: today, used: 0 };
+    const p = JSON.parse(raw);
+    if (p.date !== today) return { date: today, used: 0 };
+    return p;
+  } catch {
+    return { date: new Date().toISOString().slice(0, 10), used: 0 };
+  }
+}
+function bumpCredit(): { used: number; remaining: number } {
+  const s = getCreditState();
+  s.used += 1;
+  localStorage.setItem(CREDIT_KEY, JSON.stringify(s));
+  return { used: s.used, remaining: Math.max(0, DAILY_CREDITS - s.used) };
+}
+function isPro(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(PRO_KEY) === "1";
+}
+
 
 function fireConfetti() {
   const duration = 1500;
