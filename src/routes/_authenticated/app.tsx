@@ -566,10 +566,18 @@ function BuilderApp() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar projectName={projectName} setProjectName={setProjectName} versionCount={versions.length} />
-      <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
+      <BuilderTopBar
+        projectName={projectName}
+        setProjectName={setProjectName}
+        versionCount={versions.length}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((s) => !s)}
+        onOpenConnectors={() => setConnectorsOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />
+      <div className={`flex-1 grid min-h-0 ${sidebarOpen ? "lg:grid-cols-[400px_1fr]" : "lg:grid-cols-[0_1fr]"}`}>
         {/* Chat */}
-        <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
+        <aside className={`flex flex-col border-r border-border bg-card/40 min-h-0 ${sidebarOpen ? "" : "hidden"}`}>
           <div className="px-5 py-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Layers className="size-4 text-muted-foreground" />
