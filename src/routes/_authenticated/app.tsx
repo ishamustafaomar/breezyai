@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
@@ -1029,7 +1029,7 @@ function BuilderApp() {
       </div>
       {connectorsOpen && <ConnectorsDialog onClose={() => setConnectorsOpen(false)} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {domainOpen && <CustomDomainDialog projectId={getProjectId()} onClose={() => setDomainOpen(false)} />}
+      {domainOpen && <CustomDomainDialog projectId={projectId} onClose={() => setDomainOpen(false)} />}
     </div>
   );
 }
