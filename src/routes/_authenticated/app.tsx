@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
+import confetti from "canvas-confetti";
 import {
   Sparkles,
   ArrowUp,
@@ -22,9 +23,68 @@ import {
   History,
   ExternalLink,
   RotateCcw,
+  Plug,
+  Keyboard,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Github,
+  CreditCard,
+  Database,
+  Mail,
+  BarChart3,
+  Cloud,
+  MessageSquare,
+  Image as ImageIcon,
+  Webhook,
+  Globe,
+  Bot,
+  Slack,
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
+
+const PUBLISHED_KEY = "breezy.published.v1";
+
+const SLASH_COMMANDS = [
+  { cmd: "/dark", desc: "Switch to a dark theme", prompt: "Redesign with a dark, premium theme — deep backgrounds, vivid accents." },
+  { cmd: "/light", desc: "Switch to a light theme", prompt: "Redesign with a clean, light, airy theme." },
+  { cmd: "/bold", desc: "Make the design bolder", prompt: "Make the hero and typography dramatically bolder and more confident." },
+  { cmd: "/minimal", desc: "Strip back to minimal", prompt: "Simplify to a minimal, editorial layout with lots of whitespace." },
+  { cmd: "/testimonials", desc: "Add testimonials", prompt: "Add a testimonials section with 3 quotes and author avatars." },
+  { cmd: "/pricing", desc: "Add pricing tiers", prompt: "Add a 3-tier pricing section with a recommended plan." },
+  { cmd: "/faq", desc: "Add an FAQ", prompt: "Add an accordion FAQ section with 5 common questions." },
+  { cmd: "/footer", desc: "Add a rich footer", prompt: "Add a rich multi-column footer with links, social icons, and a newsletter signup." },
+  { cmd: "/clear", desc: "Start a fresh project", prompt: "__CLEAR__" },
+];
+
+const CONNECTORS: { name: string; desc: string; Icon: typeof Github; tier: 1 | 2 }[] = [
+  { name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, tier: 1 },
+  { name: "GitHub", desc: "Sync code to a repo", Icon: Github, tier: 1 },
+  { name: "Supabase", desc: "Database & auth", Icon: Database, tier: 1 },
+  { name: "Resend", desc: "Transactional email", Icon: Mail, tier: 1 },
+  { name: "PostHog", desc: "Product analytics", Icon: BarChart3, tier: 1 },
+  { name: "Cloudflare", desc: "Custom domains & CDN", Icon: Cloud, tier: 1 },
+  { name: "OpenAI", desc: "AI features in your app", Icon: Bot, tier: 1 },
+  { name: "Slack", desc: "Notifications to a channel", Icon: Slack, tier: 1 },
+  { name: "Linear", desc: "Sync issues from feedback", Icon: MessageSquare, tier: 2 },
+  { name: "Notion", desc: "Pull content from a page", Icon: FileCode2, tier: 2 },
+  { name: "Figma", desc: "Import a frame as a design", Icon: ImageIcon, tier: 2 },
+  { name: "Sentry", desc: "Error monitoring", Icon: Webhook, tier: 2 },
+  { name: "Vercel", desc: "Deploy to your account", Icon: Globe, tier: 2 },
+  { name: "Discord", desc: "Community webhook", Icon: MessageSquare, tier: 2 },
+];
+
+function fireConfetti() {
+  const duration = 1500;
+  const end = Date.now() + duration;
+  const colors = ["#f97316", "#fb923c", "#fde68a", "#34d399", "#60a5fa"];
+  (function frame() {
+    confetti({ particleCount: 4, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors });
+    confetti({ particleCount: 4, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
+}
 
 export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
@@ -155,7 +215,12 @@ function BuilderApp() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [projectName, setProjectName] = useState<string>("Untitled project");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -203,6 +268,36 @@ function BuilderApp() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      } else if (mod && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarOpen((s) => !s);
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setConnectorsOpen((s) => !s);
+      } else if (mod && e.key === "/") {
+        e.preventDefault();
+        setShortcutsOpen((s) => !s);
+      } else if (e.key === "Escape") {
+        setSlashOpen(false);
+        setConnectorsOpen(false);
+        setShortcutsOpen(false);
+        if (busy) {
+          abortRef.current?.abort();
+          genAbortRef.current?.abort();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [busy]);
 
   // Update the last assistant message's build status
   const patchBuild = (patch: Partial<BuildStatus>) => {
@@ -368,9 +463,37 @@ function BuilderApp() {
     }
   };
 
+  const clearProject = useCallback(() => {
+    stopPhaseTicker();
+    abortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setMessages(STARTER);
+    setGeneratedHtml("");
+    setVersions([]);
+    setActiveVersionId(null);
+    setShowHistory(false);
+    setProjectName("Untitled project");
+    setBusy(false);
+    toast.success("Started a fresh project");
+  }, []);
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
+
+    // Slash commands
+    if (trimmed.startsWith("/")) {
+      const cmd = SLASH_COMMANDS.find((c) => c.cmd === trimmed.split(/\s+/)[0].toLowerCase());
+      if (cmd) {
+        setSlashOpen(false);
+        if (cmd.prompt === "__CLEAR__") {
+          clearProject();
+          setInput("");
+          return;
+        }
+        return send(cmd.prompt);
+      }
+    }
 
     const userMsg: Msg = { role: "user", content: trimmed };
     const buildMsg: Msg = {
@@ -443,10 +566,18 @@ function BuilderApp() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <Toaster position="top-center" />
-      <BuilderTopBar projectName={projectName} setProjectName={setProjectName} versionCount={versions.length} />
-      <div className="flex-1 grid lg:grid-cols-[400px_1fr] min-h-0">
+      <BuilderTopBar
+        projectName={projectName}
+        setProjectName={setProjectName}
+        versionCount={versions.length}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((s) => !s)}
+        onOpenConnectors={() => setConnectorsOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />
+      <div className={`flex-1 grid min-h-0 ${sidebarOpen ? "lg:grid-cols-[400px_1fr]" : "lg:grid-cols-[0_1fr]"}`}>
         {/* Chat */}
-        <aside className="flex flex-col border-r border-border bg-card/40 min-h-0">
+        <aside className={`flex flex-col border-r border-border bg-card/40 min-h-0 ${sidebarOpen ? "" : "hidden"}`}>
           <div className="px-5 py-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Layers className="size-4 text-muted-foreground" />
@@ -463,15 +594,7 @@ function BuilderApp() {
                 </button>
               )}
               <button
-                onClick={() => {
-                  stop();
-                  setMessages(STARTER);
-                  setGeneratedHtml("");
-                  setVersions([]);
-                  setActiveVersionId(null);
-                  setShowHistory(false);
-                  setProjectName("Untitled project");
-                }}
+                onClick={clearProject}
                 className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
               >
                 <Plus className="size-3.5" /> New
@@ -559,7 +682,30 @@ function BuilderApp() {
             )}
           </div>
 
-          <div className="p-4 border-t border-border bg-background/60">
+          <div className="p-4 border-t border-border bg-background/60 relative">
+            {slashOpen && (
+              <div className="absolute left-4 right-4 bottom-full mb-2 rounded-2xl border border-border bg-popover shadow-elegant overflow-hidden animate-fade-in z-10">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-3 pt-2 pb-1">Slash commands</p>
+                <ul className="max-h-64 overflow-y-auto pb-1">
+                  {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(input.split(/\s+/)[0].toLowerCase())).map((c) => (
+                    <li key={c.cmd}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInput("");
+                          setSlashOpen(false);
+                          send(c.cmd);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-3"
+                      >
+                        <code className="text-xs font-mono text-primary">{c.cmd}</code>
+                        <span className="text-xs text-muted-foreground">{c.desc}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -568,8 +714,12 @@ function BuilderApp() {
               className="flex items-end gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 focus-within:ring-2 ring-primary/30 transition"
             >
               <textarea
+                ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSlashOpen(e.target.value.startsWith("/"));
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -577,7 +727,7 @@ function BuilderApp() {
                   }
                 }}
                 rows={1}
-                placeholder={busy ? "Breezy is building…" : "Describe a change…"}
+                placeholder={busy ? "Breezy is building…" : "Describe a change… (try / for commands)"}
                 className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
               />
               {busy ? (
@@ -600,8 +750,11 @@ function BuilderApp() {
                 </button>
               )}
             </form>
-            <p className="text-[11px] text-muted-foreground mt-2 px-1">
-              Shift + Enter for new line · Powered by Lovable AI
+            <p className="text-[11px] text-muted-foreground mt-2 px-1 flex items-center justify-between">
+              <span>Shift + Enter for new line · ⌘K to focus</span>
+              <button onClick={() => setShortcutsOpen(true)} className="hover:text-foreground inline-flex items-center gap-1">
+                <Keyboard className="size-3" /> shortcuts
+              </button>
             </p>
           </div>
         </aside>
@@ -720,10 +873,19 @@ function BuilderApp() {
                     const dataUrl =
                       "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
                     await navigator.clipboard.writeText(dataUrl).catch(() => {});
-                    toast.success("Site opened in a new tab — share link copied", {
-                      description:
-                        "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
-                    });
+                    const firstTime = !localStorage.getItem(PUBLISHED_KEY);
+                    if (firstTime) {
+                      localStorage.setItem(PUBLISHED_KEY, String(Date.now()));
+                      fireConfetti();
+                      toast.success("🎉 First publish! Site opened in a new tab", {
+                        description: "Share link copied. For a real custom domain, publish from the Lovable workspace.",
+                      });
+                    } else {
+                      toast.success("Site opened in a new tab — share link copied", {
+                        description:
+                          "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
+                      });
+                    }
                     setTimeout(() => URL.revokeObjectURL(url), 60000);
                   } catch {
                     toast.error("Couldn't publish the preview");
@@ -746,6 +908,8 @@ function BuilderApp() {
           </div>
         </section>
       </div>
+      {connectorsOpen && <ConnectorsDialog onClose={() => setConnectorsOpen(false)} />}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }
@@ -754,13 +918,28 @@ function BuilderTopBar({
   projectName,
   setProjectName,
   versionCount,
+  sidebarOpen,
+  onToggleSidebar,
+  onOpenConnectors,
+  onOpenShortcuts,
 }: {
   projectName: string;
   setProjectName: (n: string) => void;
   versionCount: number;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  onOpenConnectors: () => void;
+  onOpenShortcuts: () => void;
 }) {
   return (
     <div className="h-14 border-b border-border bg-card/60 backdrop-blur flex items-center px-4 gap-3 shrink-0">
+      <button
+        onClick={onToggleSidebar}
+        className="size-8 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground"
+        title={sidebarOpen ? "Hide chat (⌘B)" : "Show chat (⌘B)"}
+      >
+        {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+      </button>
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeft className="size-4" /> Back
       </Link>
@@ -783,6 +962,20 @@ function BuilderTopBar({
         </span>
       )}
       <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onOpenConnectors}
+          className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+          title="Connectors (⌘⇧P)"
+        >
+          <Plug className="size-3.5" /> Connectors
+        </button>
+        <button
+          onClick={onOpenShortcuts}
+          className="size-8 grid place-items-center rounded-full hover:bg-muted text-muted-foreground"
+          title="Keyboard shortcuts (⌘/)"
+        >
+          <Keyboard className="size-4" />
+        </button>
         <span className="text-xs text-muted-foreground hidden sm:inline-flex items-center gap-1.5">
           <span className="size-1.5 rounded-full bg-mint animate-pulse" /> Auto-saved
         </span>
@@ -1058,6 +1251,100 @@ function CodeView({ html }: { html: string }) {
       <pre className="p-5 text-[12.5px] font-mono leading-relaxed overflow-auto whitespace-pre-wrap break-words">
         {code}
       </pre>
+    </div>
+  );
+}
+
+function ConnectorsDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl border border-border bg-card shadow-elegant"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plug className="size-4 text-primary" />
+            <h2 className="font-display font-bold text-lg">Connectors</h2>
+            <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Preview</span>
+          </div>
+          <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-6">
+          {[1, 2].map((tier) => (
+            <div key={tier}>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+                {tier === 1 ? "Essentials" : "Coming soon"}
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {CONNECTORS.filter((c) => c.tier === tier).map((c) => (
+                  <button
+                    key={c.name}
+                    onClick={() => toast(`${c.name} is on the roadmap — request it from your project settings.`)}
+                    className="text-left rounded-2xl border border-border bg-background hover:bg-muted px-4 py-3 flex items-center gap-3 transition"
+                  >
+                    <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
+                      <c.Icon className="size-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">{c.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
+                    </div>
+                    <Plus className="size-4 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const items = [
+    { keys: ["⌘", "K"], label: "Focus chat input" },
+    { keys: ["⌘", "B"], label: "Toggle sidebar" },
+    { keys: ["⌘", "⇧", "P"], label: "Open Connectors" },
+    { keys: ["⌘", "/"], label: "Show this dialog" },
+    { keys: ["Esc"], label: "Stop generation / close dialogs" },
+    { keys: ["/"], label: "Slash command menu in chat" },
+    { keys: ["↵"], label: "Send message" },
+    { keys: ["⇧", "↵"], label: "New line" },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-3xl border border-border bg-card shadow-elegant"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Keyboard className="size-4 text-primary" />
+            <h2 className="font-display font-bold text-lg">Keyboard shortcuts</h2>
+          </div>
+          <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
+            <X className="size-4" />
+          </button>
+        </div>
+        <ul className="p-4 space-y-1">
+          {items.map((it) => (
+            <li key={it.label} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/50">
+              <span className="text-sm">{it.label}</span>
+              <span className="flex items-center gap-1">
+                {it.keys.map((k) => (
+                  <kbd key={k} className="px-2 py-1 rounded-md bg-muted border border-border text-[11px] font-mono">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
