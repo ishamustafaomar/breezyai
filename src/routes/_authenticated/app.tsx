@@ -45,6 +45,16 @@ import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 
 const PUBLISHED_KEY = "breezy.published.v1";
+const PROJECT_ID_KEY = "breezy.projectId.v1";
+function getProjectId(): string {
+  if (typeof window === "undefined") return "ssr";
+  let id = localStorage.getItem(PROJECT_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(PROJECT_ID_KEY, id);
+  }
+  return id;
+}
 
 const SLASH_COMMANDS = [
   { cmd: "/dark", desc: "Switch to a dark theme", prompt: "Redesign with a dark, premium theme — deep backgrounds, vivid accents." },
