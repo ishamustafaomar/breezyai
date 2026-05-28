@@ -215,7 +215,12 @@ function BuilderApp() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [projectName, setProjectName] = useState<string>("Untitled project");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
