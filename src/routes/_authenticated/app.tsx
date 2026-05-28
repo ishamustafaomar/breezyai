@@ -45,6 +45,8 @@ import {
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 import { CustomDomainDialog } from "@/components/custom-domain-dialog";
+import { publishProject, getPublishedSubdomain } from "@/lib/publish";
+
 import { projectStorageKey, upsertProjectMeta, newProjectId, type ProjectMeta } from "@/lib/projects";
 
 const PUBLISHED_KEY = "breezy.published.v1";
