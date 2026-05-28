@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Sparkles } from "lucide-react";
+import { BreezyLogo } from "@/components/breezy-logo";
 
 export function SiteFooter() {
   return (
@@ -7,11 +7,10 @@ export function SiteFooter() {
       <div className="mx-auto max-w-7xl px-5 py-16 grid gap-10 md:grid-cols-4">
         <div className="md:col-span-2">
           <Link to="/" className="flex items-center gap-2">
-            <div className="size-9 rounded-xl bg-gradient-warm grid place-items-center shadow-soft">
-              <Sparkles className="size-4 text-ink" strokeWidth={2.5} />
-            </div>
+            <BreezyLogo className="size-10" />
             <span className="font-display text-2xl font-bold">breezy</span>
           </Link>
+
           <p className="mt-4 max-w-sm text-sm text-muted-foreground">
             The friendliest way to vibe-code beautiful apps. Speak it, see it, ship it.
           </p>

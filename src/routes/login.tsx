@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-ro
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
+import { BreezyLogo } from "@/components/breezy-logo";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
@@ -110,11 +111,10 @@ function LoginPage() {
       <Toaster position="top-center" />
       <div className="w-full max-w-md">
         <Link to="/" className="flex items-center gap-2 justify-center mb-8 group">
-          <div className="size-9 rounded-xl bg-gradient-warm grid place-items-center shadow-soft group-hover:rotate-6 transition-transform">
-            <Sparkles className="size-4 text-ink" strokeWidth={2.5} />
-          </div>
+          <BreezyLogo className="size-10 group-hover:rotate-6 transition-transform" />
           <span className="font-display text-2xl font-bold tracking-tight">breezy</span>
         </Link>
+
 
         <div className="rounded-2xl border border-border bg-card shadow-soft p-6 sm:p-8">
           <h1 className="font-display text-2xl font-bold text-center">

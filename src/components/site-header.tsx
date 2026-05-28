@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Sparkles, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { BreezyLogo } from "@/components/breezy-logo";
 
 export function SiteHeader() {
   const { user, loading, signOut } = useAuth();
@@ -10,11 +11,10 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/70 border-b border-border/60">
       <div className="mx-auto max-w-7xl px-5 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
-          <div className="size-8 rounded-xl bg-gradient-warm grid place-items-center shadow-soft group-hover:rotate-6 transition-transform">
-            <Sparkles className="size-4 text-ink" strokeWidth={2.5} />
-          </div>
+          <BreezyLogo className="size-9 group-hover:rotate-6 transition-transform" />
           <span className="font-display text-xl font-bold tracking-tight">breezy</span>
         </Link>
+
 
         <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
           <Link to="/pricing" className="px-3 py-2 rounded-lg hover:bg-muted transition-colors" activeProps={{ className: "text-primary" }}>
