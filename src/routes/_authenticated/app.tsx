@@ -1028,6 +1028,18 @@ function BuilderApp() {
               >
                 <Share2 className="size-3.5" /> Share
               </button>
+              {publishedUrl && (
+                <a
+                  href={publishedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20"
+                  title={publishedUrl}
+                >
+                  <Globe className="size-3.5" /> Live
+                </a>
+              )}
+
               <button
                 disabled={!generatedHtml || publishing}
                 onClick={async () => {
