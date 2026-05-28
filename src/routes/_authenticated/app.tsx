@@ -690,7 +690,30 @@ function BuilderApp() {
             )}
           </div>
 
-          <div className="p-4 border-t border-border bg-background/60">
+          <div className="p-4 border-t border-border bg-background/60 relative">
+            {slashOpen && (
+              <div className="absolute left-4 right-4 bottom-full mb-2 rounded-2xl border border-border bg-popover shadow-elegant overflow-hidden animate-fade-in z-10">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-3 pt-2 pb-1">Slash commands</p>
+                <ul className="max-h-64 overflow-y-auto pb-1">
+                  {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(input.split(/\s+/)[0].toLowerCase())).map((c) => (
+                    <li key={c.cmd}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInput("");
+                          setSlashOpen(false);
+                          send(c.cmd);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-3"
+                      >
+                        <code className="text-xs font-mono text-primary">{c.cmd}</code>
+                        <span className="text-xs text-muted-foreground">{c.desc}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -699,8 +722,12 @@ function BuilderApp() {
               className="flex items-end gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 focus-within:ring-2 ring-primary/30 transition"
             >
               <textarea
+                ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSlashOpen(e.target.value.startsWith("/"));
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -708,7 +735,7 @@ function BuilderApp() {
                   }
                 }}
                 rows={1}
-                placeholder={busy ? "Breezy is building…" : "Describe a change…"}
+                placeholder={busy ? "Breezy is building…" : "Describe a change… (try / for commands)"}
                 className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-32"
               />
               {busy ? (
@@ -731,8 +758,11 @@ function BuilderApp() {
                 </button>
               )}
             </form>
-            <p className="text-[11px] text-muted-foreground mt-2 px-1">
-              Shift + Enter for new line · Powered by Lovable AI
+            <p className="text-[11px] text-muted-foreground mt-2 px-1 flex items-center justify-between">
+              <span>Shift + Enter for new line · ⌘K to focus</span>
+              <button onClick={() => setShortcutsOpen(true)} className="hover:text-foreground inline-flex items-center gap-1">
+                <Keyboard className="size-3" /> shortcuts
+              </button>
             </p>
           </div>
         </aside>
