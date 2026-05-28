@@ -69,22 +69,51 @@ const SLASH_COMMANDS = [
   { cmd: "/clear", desc: "Start a fresh project", prompt: "__CLEAR__" },
 ];
 
-const CONNECTORS: { name: string; desc: string; Icon: typeof Github; tier: 1 | 2 }[] = [
-  { name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, tier: 1 },
-  { name: "GitHub", desc: "Sync code to a repo", Icon: Github, tier: 1 },
-  { name: "Supabase", desc: "Database & auth", Icon: Database, tier: 1 },
-  { name: "Resend", desc: "Transactional email", Icon: Mail, tier: 1 },
-  { name: "PostHog", desc: "Product analytics", Icon: BarChart3, tier: 1 },
-  { name: "Cloudflare", desc: "Custom domains & CDN", Icon: Cloud, tier: 1 },
-  { name: "OpenAI", desc: "AI features in your app", Icon: Bot, tier: 1 },
-  { name: "Slack", desc: "Notifications to a channel", Icon: Slack, tier: 1 },
-  { name: "Linear", desc: "Sync issues from feedback", Icon: MessageSquare, tier: 2 },
-  { name: "Notion", desc: "Pull content from a page", Icon: FileCode2, tier: 2 },
-  { name: "Figma", desc: "Import a frame as a design", Icon: ImageIcon, tier: 2 },
-  { name: "Sentry", desc: "Error monitoring", Icon: Webhook, tier: 2 },
-  { name: "Vercel", desc: "Deploy to your account", Icon: Globe, tier: 2 },
-  { name: "Discord", desc: "Community webhook", Icon: MessageSquare, tier: 2 },
+type ApiKeyConnector = { id: string; name: string; desc: string; Icon: typeof Github; envHint: string };
+const API_KEY_CONNECTORS: ApiKeyConnector[] = [
+  { id: "openai", name: "OpenAI", desc: "GPT models, embeddings, DALL·E", Icon: Bot, envHint: "OPENAI_API_KEY" },
+  { id: "anthropic", name: "Anthropic", desc: "Claude models", Icon: Bot, envHint: "ANTHROPIC_API_KEY" },
+  { id: "elevenlabs", name: "ElevenLabs", desc: "AI voices & text-to-speech", Icon: MessageSquare, envHint: "ELEVENLABS_API_KEY" },
+  { id: "replicate", name: "Replicate", desc: "Run any open-source model", Icon: ImageIcon, envHint: "REPLICATE_API_TOKEN" },
+  { id: "stripe", name: "Stripe", desc: "Payments & subscriptions", Icon: CreditCard, envHint: "STRIPE_SECRET_KEY" },
+  { id: "resend", name: "Resend", desc: "Transactional email", Icon: Mail, envHint: "RESEND_API_KEY" },
+  { id: "posthog", name: "PostHog", desc: "Product analytics", Icon: BarChart3, envHint: "POSTHOG_API_KEY" },
+  { id: "supabase", name: "Supabase", desc: "Database service key", Icon: Database, envHint: "SUPABASE_SERVICE_ROLE" },
+  { id: "openrouter", name: "OpenRouter", desc: "Multi-model AI router", Icon: Bot, envHint: "OPENROUTER_API_KEY" },
+  { id: "groq", name: "Groq", desc: "Ultra-fast LLM inference", Icon: Bot, envHint: "GROQ_API_KEY" },
+  { id: "cloudflare", name: "Cloudflare", desc: "Workers, R2, KV", Icon: Cloud, envHint: "CLOUDFLARE_API_TOKEN" },
+  { id: "slack", name: "Slack Webhook", desc: "Post to a channel", Icon: Slack, envHint: "SLACK_WEBHOOK_URL" },
 ];
+
+const CREDIT_KEY = "breezy.credits.v1";
+const DAILY_CREDITS = 5;
+const PRO_KEY = "breezy.pro.v1";
+const KEYS_STORAGE = "breezy.apikeys.v1";
+
+function getCreditState(): { date: string; used: number } {
+  if (typeof window === "undefined") return { date: "", used: 0 };
+  try {
+    const raw = localStorage.getItem(CREDIT_KEY);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!raw) return { date: today, used: 0 };
+    const p = JSON.parse(raw);
+    if (p.date !== today) return { date: today, used: 0 };
+    return p;
+  } catch {
+    return { date: new Date().toISOString().slice(0, 10), used: 0 };
+  }
+}
+function bumpCredit(): { used: number; remaining: number } {
+  const s = getCreditState();
+  s.used += 1;
+  localStorage.setItem(CREDIT_KEY, JSON.stringify(s));
+  return { used: s.used, remaining: Math.max(0, DAILY_CREDITS - s.used) };
+}
+function isPro(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(PRO_KEY) === "1";
+}
+
 
 function fireConfetti() {
   const duration = 1500;
@@ -116,9 +145,13 @@ type BuildStatus = {
   progress: number; // 0-100
   done: boolean;
   error?: string;
+  mode?: "build" | "edit";
 };
 
-type Msg = { role: "user"; content: string } | { role: "assistant"; content: string; build?: BuildStatus };
+type Msg =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; build?: BuildStatus; clarify?: string[] };
+
 
 const STARTER: Msg[] = [
   {
@@ -167,6 +200,18 @@ const PHASES: { id: string; label: string; match?: RegExp }[] = [
   { id: "verify", label: "Verifying completion", match: /<\/html>/i },
 ];
 const PHASE_LABELS = PHASES.map((p) => p.label);
+
+// Edit-mode shows a different, much shorter phase list — it's a surgical patch, not a rebuild.
+const EDIT_PHASES: { id: string; label: string }[] = [
+  { id: "read", label: "Reading current site" },
+  { id: "locate", label: "Locating the change" },
+  { id: "apply", label: "Applying edits" },
+  { id: "review", label: "Reviewing & verifying" },
+];
+const EDIT_PHASE_LABELS = EDIT_PHASES.map((p) => p.label);
+
+const CLARIFY_MARKER_RE = /<!--BREEZY_CLARIFY:(.*?)-->/;
+
 
 const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
 
@@ -347,6 +392,9 @@ function BuilderApp() {
     startPhaseTicker();
 
     const baseHtml = generatedHtml; // edit base — preserved if request fails
+    const isEdit = !!(baseHtml && baseHtml.length > 200);
+    const phaseList = isEdit ? EDIT_PHASE_LABELS : PHASE_LABELS;
+    patchBuild({ mode: isEdit ? "edit" : "build", phase: phaseList[0], phaseIndex: 0, progress: 4 });
 
     const doFetch = () =>
       fetch("/api/generate", {
@@ -361,7 +409,6 @@ function BuilderApp() {
 
     try {
       let resp = await doFetch();
-      // Auto-retry once on 429 with a short backoff
       if (resp.status === 429) {
         patchBuild({ phase: "Rate-limited, retrying" });
         await new Promise((r) => setTimeout(r, 4000));
@@ -375,7 +422,7 @@ function BuilderApp() {
           error: error || "Generation failed",
           progress: 100,
           phase: "Failed",
-          phaseIndex: PHASES.length - 1,
+          phaseIndex: phaseList.length - 1,
         });
         return null;
       }
@@ -383,7 +430,7 @@ function BuilderApp() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let html = "";
-      const TARGET = 22000;
+      const TARGET = isEdit ? Math.max(8000, baseHtml.length) : 22000;
       let lastPreviewLen = 0;
       phaseIdxRef.current = 0;
       while (true) {
@@ -391,15 +438,24 @@ function BuilderApp() {
         if (done) break;
         html += decoder.decode(value, { stream: true });
 
-        const detected = detectPhase(html);
-        phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
-        const phaseIdx = phaseIdxRef.current;
-        const phaseLabel = PHASE_LABELS[phaseIdx];
-        const pct = progressFromPhase(phaseIdx, html.length, TARGET);
-        patchBuild({ progress: pct, phase: phaseLabel, phaseIndex: phaseIdx });
+        if (isEdit) {
+          // Edit-mode phases are time/length-based, not regex-based.
+          const ratio = html.length / TARGET;
+          let pIdx = 0;
+          if (ratio > 0.05) pIdx = 1;
+          if (ratio > 0.35) pIdx = 2;
+          if (ratio > 0.85 || html.toLowerCase().includes("</html>")) pIdx = 3;
+          phaseIdxRef.current = Math.max(phaseIdxRef.current, pIdx);
+          const pct = Math.min(96, Math.round(ratio * 92));
+          patchBuild({ progress: pct, phase: EDIT_PHASE_LABELS[phaseIdxRef.current], phaseIndex: phaseIdxRef.current });
+        } else {
+          const detected = detectPhase(html);
+          phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
+          const phaseIdx = phaseIdxRef.current;
+          const pct = progressFromPhase(phaseIdx, html.length, TARGET);
+          patchBuild({ progress: pct, phase: PHASE_LABELS[phaseIdx], phaseIndex: phaseIdx });
+        }
 
-        // Live preview: as soon as we have a renderable body, push it.
-        // Throttle to roughly every 600 chars to avoid iframe thrash.
         if (html.length - lastPreviewLen > 600) {
           const live = previewableHtml(html);
           if (live) {
@@ -410,9 +466,39 @@ function BuilderApp() {
       }
       html += decoder.decode();
       stopPhaseTicker();
+
+      // Clarify-mode response: no HTML, just questions.
+      const clarifyMatch = html.match(CLARIFY_MARKER_RE);
+      if (clarifyMatch && !html.toLowerCase().includes("<!doctype")) {
+        setGeneratedHtml(baseHtml);
+        const questions = clarifyMatch[1].split("|").map((q) => q.trim()).filter(Boolean);
+        patchBuild({
+          done: true,
+          progress: 100,
+          phase: "Need a bit more info",
+          phaseIndex: phaseList.length - 1,
+        });
+        // Replace the last assistant message content with the clarify questions
+        setMessages((prev) => {
+          const copy = prev.slice();
+          for (let i = copy.length - 1; i >= 0; i--) {
+            if (copy[i].role === "assistant" && (copy[i] as Extract<Msg, { role: "assistant" }>).build) {
+              copy[i] = {
+                role: "assistant",
+                content: "A couple quick questions so I can build this right:",
+                clarify: questions,
+              };
+              break;
+            }
+          }
+          return copy;
+        });
+        return null;
+      }
+
       patchBuild({
-        phase: "Verifying completion",
-        phaseIndex: PHASES.length - 1,
+        phase: isEdit ? "Reviewing & verifying" : "Verifying completion",
+        phaseIndex: phaseList.length - 1,
         progress: 98,
       });
       const marker = html.match(COMPLETION_MARKER_RE);
@@ -421,10 +507,9 @@ function BuilderApp() {
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
-        // Roll back to base so we don't leave a half-rendered preview.
         setGeneratedHtml(baseHtml);
         const error =
-          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
+          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I'll keep the current version unchanged.";
         toast.error("Build was incomplete — kept the previous version");
         patchBuild({
           done: true,
@@ -436,7 +521,6 @@ function BuilderApp() {
         return null;
       }
       setGeneratedHtml(html);
-      // Push a new version
       const v: Version = {
         id: crypto.randomUUID(),
         html,
@@ -447,11 +531,12 @@ function BuilderApp() {
       setActiveVersionId(v.id);
       patchBuild({
         progress: 100,
-        phase: "Finished and verified",
-        phaseIndex: PHASES.length - 1,
+        phase: isEdit ? "Edit applied" : "Finished and verified",
+        phaseIndex: phaseList.length - 1,
         done: true,
       });
       return html;
+
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         toast.error((e as Error).message || "Generation failed");
@@ -658,7 +743,8 @@ function BuilderApp() {
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.map((m, i) => (
-              <Message key={i} msg={m} />
+              <Message key={i} msg={m} onChip={(t) => send(t)} />
+
             ))}
             {messages.length === 1 && !busy && (
               <div className="pt-2 grid gap-2">
@@ -1064,8 +1150,12 @@ function MessageContent({ text }: { text: string }) {
 }
 
 function BuildCard({ build }: { build: BuildStatus }) {
-  const steps = PHASES;
+  const steps = build.mode === "edit" ? EDIT_PHASES : PHASES;
   const activeIdx = Math.min(steps.length - 1, build.phaseIndex ?? Math.floor((build.progress / 100) * steps.length));
+  const title = build.done
+    ? build.error ? (build.mode === "edit" ? "Edit failed" : "Build failed") : (build.mode === "edit" ? "Edit applied" : "Site ready")
+    : (build.mode === "edit" ? "Editing your site" : "Building your site");
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full transition-opacity duration-300">
       <div className="flex items-center justify-between">
@@ -1074,9 +1164,10 @@ function BuildCard({ build }: { build: BuildStatus }) {
             {!build.done && (
               <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 animate-ping" />
             )}
-            <span
-              className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`}
-            />
+          <span className="text-sm font-semibold transition-all duration-300">
+            {title}
+          </span>
+
           </span>
           <span className="text-sm font-semibold transition-all duration-300">
             {build.done ? (build.error ? "Build failed" : "Site ready") : "Building your site"}
@@ -1148,7 +1239,7 @@ function BuildCard({ build }: { build: BuildStatus }) {
   );
 }
 
-function Message({ msg }: { msg: Msg }) {
+function Message({ msg, onChip }: { msg: Msg; onChip?: (text: string) => void }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
@@ -1166,10 +1257,24 @@ function Message({ msg }: { msg: Msg }) {
             <MessageContent text={msg.content} />
           </div>
         )}
+        {msg.clarify && msg.clarify.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {msg.clarify.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => onChip?.(q)}
+                className="text-xs rounded-full border border-primary/40 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 transition text-foreground"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 function PreviewCanvas({
   device,
@@ -1277,6 +1382,23 @@ function CodeView({ html }: { html: string }) {
 }
 
 function ConnectorsDialog({ onClose }: { onClose: () => void }) {
+  const [keys, setKeys] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(localStorage.getItem(KEYS_STORAGE) || "{}"); } catch { return {}; }
+  });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const save = (id: string, value: string) => {
+    const next = { ...keys };
+    if (value.trim()) next[id] = value.trim(); else delete next[id];
+    setKeys(next);
+    localStorage.setItem(KEYS_STORAGE, JSON.stringify(next));
+    setActiveId(null);
+    setDraft("");
+    toast.success(value.trim() ? "API key saved locally" : "API key removed");
+  };
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
       <div
@@ -1286,44 +1408,71 @@ function ConnectorsDialog({ onClose }: { onClose: () => void }) {
         <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Plug className="size-4 text-primary" />
-            <h2 className="font-display font-bold text-lg">Connectors</h2>
-            <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Preview</span>
+            <h2 className="font-display font-bold text-lg">API Key Connectors</h2>
           </div>
           <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
             <X className="size-4" />
           </button>
         </div>
-        <div className="p-6 space-y-6">
-          {[1, 2].map((tier) => (
-            <div key={tier}>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-                {tier === 1 ? "Essentials" : "Coming soon"}
-              </p>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {CONNECTORS.filter((c) => c.tier === tier).map((c) => (
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-xs text-muted-foreground">
+            Paste an API key from the provider's dashboard. Keys are stored in your browser only and injected into the generated site at build time.
+          </p>
+        </div>
+        <div className="p-6 pt-2 grid sm:grid-cols-2 gap-2">
+          {API_KEY_CONNECTORS.map((c) => {
+            const has = !!keys[c.id];
+            const open = activeId === c.id;
+            return (
+              <div key={c.id} className={`rounded-2xl border ${has ? "border-mint/40 bg-mint/5" : "border-border bg-background"} px-4 py-3`}>
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
+                    <c.Icon className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold flex items-center gap-1.5">
+                      {c.name}
+                      {has && <Check className="size-3 text-mint" />}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
+                  </div>
                   <button
-                    key={c.name}
-                    onClick={() => toast(`${c.name} is on the roadmap — request it from your project settings.`)}
-                    className="text-left rounded-2xl border border-border bg-background hover:bg-muted px-4 py-3 flex items-center gap-3 transition"
+                    onClick={() => { setActiveId(open ? null : c.id); setDraft(keys[c.id] || ""); }}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-muted"
                   >
-                    <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
-                      <c.Icon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
-                    </div>
-                    <Plus className="size-4 text-muted-foreground" />
+                    {has ? "Edit" : "Add key"}
                   </button>
-                ))}
+                </div>
+                {open && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="password"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder={c.envHint}
+                      className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-border bg-card outline-none focus:ring-2 ring-primary/30"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      {has && (
+                        <button onClick={() => save(c.id, "")} className="text-xs px-3 py-1.5 rounded-full hover:bg-muted text-rose">
+                          Remove
+                        </button>
+                      )}
+                      <button onClick={() => save(c.id, draft)} className="text-xs px-3 py-1.5 rounded-full bg-ink text-cream font-semibold">
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
+
 
 function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const items = [
