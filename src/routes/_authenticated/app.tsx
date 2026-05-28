@@ -1306,6 +1306,23 @@ function CodeView({ html }: { html: string }) {
 }
 
 function ConnectorsDialog({ onClose }: { onClose: () => void }) {
+  const [keys, setKeys] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(localStorage.getItem(KEYS_STORAGE) || "{}"); } catch { return {}; }
+  });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const save = (id: string, value: string) => {
+    const next = { ...keys };
+    if (value.trim()) next[id] = value.trim(); else delete next[id];
+    setKeys(next);
+    localStorage.setItem(KEYS_STORAGE, JSON.stringify(next));
+    setActiveId(null);
+    setDraft("");
+    toast.success(value.trim() ? "API key saved locally" : "API key removed");
+  };
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
       <div
@@ -1315,44 +1332,71 @@ function ConnectorsDialog({ onClose }: { onClose: () => void }) {
         <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Plug className="size-4 text-primary" />
-            <h2 className="font-display font-bold text-lg">Connectors</h2>
-            <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Preview</span>
+            <h2 className="font-display font-bold text-lg">API Key Connectors</h2>
           </div>
           <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
             <X className="size-4" />
           </button>
         </div>
-        <div className="p-6 space-y-6">
-          {[1, 2].map((tier) => (
-            <div key={tier}>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
-                {tier === 1 ? "Essentials" : "Coming soon"}
-              </p>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {CONNECTORS.filter((c) => c.tier === tier).map((c) => (
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-xs text-muted-foreground">
+            Paste an API key from the provider's dashboard. Keys are stored in your browser only and injected into the generated site at build time.
+          </p>
+        </div>
+        <div className="p-6 pt-2 grid sm:grid-cols-2 gap-2">
+          {API_KEY_CONNECTORS.map((c) => {
+            const has = !!keys[c.id];
+            const open = activeId === c.id;
+            return (
+              <div key={c.id} className={`rounded-2xl border ${has ? "border-mint/40 bg-mint/5" : "border-border bg-background"} px-4 py-3`}>
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
+                    <c.Icon className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold flex items-center gap-1.5">
+                      {c.name}
+                      {has && <Check className="size-3 text-mint" />}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
+                  </div>
                   <button
-                    key={c.name}
-                    onClick={() => toast(`${c.name} is on the roadmap — request it from your project settings.`)}
-                    className="text-left rounded-2xl border border-border bg-background hover:bg-muted px-4 py-3 flex items-center gap-3 transition"
+                    onClick={() => { setActiveId(open ? null : c.id); setDraft(keys[c.id] || ""); }}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-muted"
                   >
-                    <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
-                      <c.Icon className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
-                    </div>
-                    <Plus className="size-4 text-muted-foreground" />
+                    {has ? "Edit" : "Add key"}
                   </button>
-                ))}
+                </div>
+                {open && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="password"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder={c.envHint}
+                      className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-border bg-card outline-none focus:ring-2 ring-primary/30"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      {has && (
+                        <button onClick={() => save(c.id, "")} className="text-xs px-3 py-1.5 rounded-full hover:bg-muted text-rose">
+                          Remove
+                        </button>
+                      )}
+                      <button onClick={() => save(c.id, draft)} className="text-xs px-3 py-1.5 rounded-full bg-ink text-cream font-semibold">
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
+
 
 function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const items = [
