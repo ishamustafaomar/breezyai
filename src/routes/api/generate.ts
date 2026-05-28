@@ -204,7 +204,7 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
               body: JSON.stringify({
                 model: "openai/gpt-5",
                 stream: true,
-                max_completion_tokens: 16000,
+                max_completion_tokens: 24000,
                 messages: msgs,
               }),
             });
