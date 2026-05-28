@@ -16,6 +16,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
+import { Route as ApiDomainsVerifyRouteImport } from './routes/api/domains/verify'
+import { Route as ApiDomainsAddRouteImport } from './routes/api/domains/add'
 
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
@@ -51,6 +53,16 @@ const AuthenticatedAppRoute = AuthenticatedAppRouteImport.update({
   path: '/app',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiDomainsVerifyRoute = ApiDomainsVerifyRouteImport.update({
+  id: '/api/domains/verify',
+  path: '/api/domains/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDomainsAddRoute = ApiDomainsAddRouteImport.update({
+  id: '/api/domains/add',
+  path: '/api/domains/add',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,6 +71,8 @@ export interface FileRoutesByFullPath {
   '/app': typeof AuthenticatedAppRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -67,6 +81,8 @@ export interface FileRoutesByTo {
   '/app': typeof AuthenticatedAppRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,6 +93,8 @@ export interface FileRoutesById {
   '/_authenticated/app': typeof AuthenticatedAppRoute
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
+  '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,8 +105,18 @@ export interface FileRouteTypes {
     | '/app'
     | '/api/chat'
     | '/api/generate'
+    | '/api/domains/add'
+    | '/api/domains/verify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/pricing' | '/app' | '/api/chat' | '/api/generate'
+  to:
+    | '/'
+    | '/login'
+    | '/pricing'
+    | '/app'
+    | '/api/chat'
+    | '/api/generate'
+    | '/api/domains/add'
+    | '/api/domains/verify'
   id:
     | '__root__'
     | '/'
@@ -98,6 +126,8 @@ export interface FileRouteTypes {
     | '/_authenticated/app'
     | '/api/chat'
     | '/api/generate'
+    | '/api/domains/add'
+    | '/api/domains/verify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -107,6 +137,8 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
+  ApiDomainsAddRoute: typeof ApiDomainsAddRoute
+  ApiDomainsVerifyRoute: typeof ApiDomainsVerifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -160,6 +192,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/domains/verify': {
+      id: '/api/domains/verify'
+      path: '/api/domains/verify'
+      fullPath: '/api/domains/verify'
+      preLoaderRoute: typeof ApiDomainsVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/domains/add': {
+      id: '/api/domains/add'
+      path: '/api/domains/add'
+      fullPath: '/api/domains/add'
+      preLoaderRoute: typeof ApiDomainsAddRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -182,7 +228,19 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   ApiChatRoute: ApiChatRoute,
   ApiGenerateRoute: ApiGenerateRoute,
+  ApiDomainsAddRoute: ApiDomainsAddRoute,
+  ApiDomainsVerifyRoute: ApiDomainsVerifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
