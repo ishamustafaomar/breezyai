@@ -172,14 +172,6 @@ export const Route = createFileRoute("/api/generate")({
           const htmlForPrompt = currentHtml ? truncateCurrentHtml(currentHtml) : undefined;
           const conversation = prepareConversationHistory(messages ?? [], htmlForPrompt?.length ?? 0);
           const finalUserPrompt = isEdit
-            ? `CURRENT SITE HTML — apply a surgical edit; do NOT rewrite the whole page unless the user explicitly asked for a full redesign:\n\n${htmlForPrompt}\n\nInstructions:
-- Use the conversation above to understand exactly what to change.
-- Modify ONLY the relevant sections, styles, or copy. Keep all unrelated markup, classes, scripts, and structure intact.
-- Output the full updated HTML document. Raw HTML only — no markdown, no code fences, no commentary.`
-            : `Generate the complete HTML document for this project based on the conversation above.
-
-Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic accessible HTML, real on-topic copy, 6–9 sections as appropriate. Raw HTML only — no markdown, no fences. End with </html>.`;
-          const finalUserPrompt = isEdit
             ? `═══ SURGICAL EDIT ═══
 The user is editing an EXISTING site. Below is the current HTML. Apply ONLY the change(s) from the most recent user message above. Preserve everything else exactly — palette, fonts, copy, images, scripts, sections, structure.
 
@@ -197,6 +189,13 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
 
 If the request is too vague to attempt, use CLARIFY MODE instead.`;
 
+          const baseMessages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...conversation,
+            { role: "user", content: finalUserPrompt },
+          ];
+
+          const callGateway = (msgs: typeof baseMessages) =>
             fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
               headers: {
@@ -212,6 +211,7 @@ If the request is too vague to attempt, use CLARIFY MODE instead.`;
             });
 
           const upstream = await callGateway(baseMessages);
+
 
           if (!upstream.ok || !upstream.body) {
             if (upstream.status === 429)
