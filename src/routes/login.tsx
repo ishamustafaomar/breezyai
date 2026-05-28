@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-ro
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
+import { BreezyLogo } from "@/components/breezy-logo";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";

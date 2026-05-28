@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
+import { BreezyLogo } from "@/components/breezy-logo";
 import {
   Sparkles,
   ArrowUp,
