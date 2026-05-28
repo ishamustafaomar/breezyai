@@ -1,11 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Sparkles, ArrowRight, LogOut } from "lucide-react";
+import { Plus, Trash2, Sparkles, ArrowRight, LogOut, Globe } from "lucide-react";
 import { listProjects, deleteProject, newProjectId, type ProjectMeta } from "@/lib/projects";
 import { useAuth } from "@/hooks/use-auth";
 import { BreezyLogo } from "@/components/breezy-logo";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -21,10 +22,28 @@ function DashboardPage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [subdomains, setSubdomains] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setProjects(listProjects());
+    const list = listProjects();
+    setProjects(list);
+    // Load published subdomains for these projects
+    (async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return;
+      const { data } = await supabase
+        .from("sites")
+        .select("project_id, subdomain, html_content")
+        .eq("user_id", u.user.id)
+        .not("html_content", "is", null);
+      if (data) {
+        const map: Record<string, string> = {};
+        for (const r of data) if (r.subdomain) map[r.project_id] = r.subdomain;
+        setSubdomains(map);
+      }
+    })();
   }, []);
+
 
   const createNew = () => {
     const id = newProjectId();
