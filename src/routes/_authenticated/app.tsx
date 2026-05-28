@@ -558,7 +558,16 @@ function BuilderApp() {
         phaseIndex: phaseList.length - 1,
         done: true,
       });
+      if (!isPro()) {
+        const { remaining } = bumpCredit();
+        if (remaining <= 2) {
+          toast.message(`${remaining} prompt${remaining === 1 ? "" : "s"} left today`, {
+            description: remaining === 0 ? "Upgrade to Pro for unlimited." : undefined,
+          });
+        }
+      }
       return html;
+
 
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
