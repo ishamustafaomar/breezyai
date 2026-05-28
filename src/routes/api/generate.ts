@@ -323,12 +323,12 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
 
                 lastFinishReason = await consume(upstream);
 
-                // Auto-continue up to 3 times if we hit length cap without finishing the doc.
+                // Auto-continue up to 6 times if we hit length cap without finishing the doc.
                 let attempts = 0;
                 while (
                   !request.signal.aborted &&
-                  attempts < 3 &&
-                  lastFinishReason === "length" &&
+                  attempts < 6 &&
+                  (lastFinishReason === "length" || (lastFinishReason === "stop" && !emittedAll.toLowerCase().includes("</html>"))) &&
                   !emittedAll.toLowerCase().includes("</html>")
                 ) {
                   attempts++;
@@ -367,9 +367,26 @@ Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic
                   return;
                 }
 
+                const lower = emittedAll.toLowerCase();
+                const hasDoctype = lower.includes("<!doctype") || lower.includes("<html");
+                const hasHtmlClose = lower.includes("</html>");
+
+                // Salvage: if we have a real document but it never closed, append closing tags
+                // so the user gets a usable site instead of losing the whole generation.
+                if (emittedContent && hasDoctype && !hasHtmlClose && emittedAll.length > 2000) {
+                  const tail: string[] = [];
+                  if (!lower.includes("</body>")) tail.push("\n</body>");
+                  tail.push("\n</html>");
+                  const salvage = tail.join("");
+                  emittedAll += salvage;
+                  controller.enqueue(encoder.encode(salvage));
+                  closeStream(controller, "complete");
+                  return;
+                }
+
                 const complete =
                   emittedContent &&
-                  emittedAll.toLowerCase().includes("</html>") &&
+                  hasHtmlClose &&
                   (lastFinishReason === "" || lastFinishReason === "stop");
                 closeStream(controller, complete ? "complete" : `incomplete:${lastFinishReason || "no-content"}`);
               } catch (err) {
