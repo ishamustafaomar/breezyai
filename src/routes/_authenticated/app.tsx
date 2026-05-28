@@ -229,6 +229,8 @@ function BuilderApp() {
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [projectId] = useState(() => getProjectId());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
