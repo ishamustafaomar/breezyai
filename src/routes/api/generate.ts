@@ -373,6 +373,12 @@ If the request is too vague to attempt, use CLARIFY MODE instead.`;
                 const hasDoctype = lower.includes("<!doctype") || lower.includes("<html");
                 const hasHtmlClose = lower.includes("</html>");
 
+                // Clarify mode: model returned a clarify marker instead of HTML.
+                if (emittedContent && emittedAll.includes("<!--BREEZY_CLARIFY:") && !hasDoctype) {
+                  closeStream(controller, "clarify");
+                  return;
+                }
+
                 // Salvage: if we have a real document but it never closed, append closing tags
                 // so the user gets a usable site instead of losing the whole generation.
                 if (emittedContent && hasDoctype && !hasHtmlClose && emittedAll.length > 2000) {
@@ -391,6 +397,7 @@ If the request is too vague to attempt, use CLARIFY MODE instead.`;
                   hasHtmlClose &&
                   (lastFinishReason === "" || lastFinishReason === "stop");
                 closeStream(controller, complete ? "complete" : `incomplete:${lastFinishReason || "no-content"}`);
+
               } catch (err) {
                 console.error("generate stream error:", err);
                 closeStream(controller, "incomplete:stream-error");
