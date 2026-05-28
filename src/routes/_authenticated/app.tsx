@@ -908,6 +908,13 @@ function BuilderApp() {
               >
                 <Rocket className="size-3.5" /> Publish
               </button>
+              <button
+                onClick={() => setDomainOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Connect a custom domain"
+              >
+                <Globe className="size-3.5" /> Domain
+              </button>
             </div>
           </div>
 
