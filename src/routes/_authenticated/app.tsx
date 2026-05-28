@@ -908,6 +908,8 @@ function BuilderApp() {
           </div>
         </section>
       </div>
+      {connectorsOpen && <ConnectorsDialog onClose={() => setConnectorsOpen(false)} />}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }
