@@ -594,15 +594,7 @@ function BuilderApp() {
                 </button>
               )}
               <button
-                onClick={() => {
-                  stop();
-                  setMessages(STARTER);
-                  setGeneratedHtml("");
-                  setVersions([]);
-                  setActiveVersionId(null);
-                  setShowHistory(false);
-                  setProjectName("Untitled project");
-                }}
+                onClick={clearProject}
                 className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded-full hover:bg-muted"
               >
                 <Plus className="size-3.5" /> New
