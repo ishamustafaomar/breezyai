@@ -1238,7 +1238,7 @@ function BuildCard({ build }: { build: BuildStatus }) {
   );
 }
 
-function Message({ msg }: { msg: Msg }) {
+function Message({ msg, onChip }: { msg: Msg; onChip?: (text: string) => void }) {
   if (msg.role === "user") {
     return (
       <div className="flex gap-3 justify-end animate-pop-in">
@@ -1256,10 +1256,24 @@ function Message({ msg }: { msg: Msg }) {
             <MessageContent text={msg.content} />
           </div>
         )}
+        {msg.clarify && msg.clarify.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {msg.clarify.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => onChip?.(q)}
+                className="text-xs rounded-full border border-primary/40 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 transition text-foreground"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 function PreviewCanvas({
   device,
