@@ -10,6 +10,11 @@ export const Route = createFileRoute("/pricing")({
       { name: "description", content: "Simple, friendly pricing. Free to start, pay when you ship." },
       { property: "og:title", content: "Pricing — Breezy" },
       { property: "og:description", content: "Free to start. Pay only when you publish." },
+      { property: "og:url", content: "https://breezyai.dev/pricing" },
+      { property: "og:type", content: "website" },
+    ],
+    links: [
+      { rel: "canonical", href: "https://breezyai.dev/pricing" },
     ],
   }),
   component: PricingPage,
