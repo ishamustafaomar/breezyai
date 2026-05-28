@@ -328,6 +328,22 @@ function BuilderApp() {
     }
   }, [projectId]);
 
+  // Load existing published subdomain (if any) for this project
+  useEffect(() => {
+    let cancelled = false;
+    getPublishedSubdomain(projectId)
+      .then((sub) => {
+        if (!cancelled && sub && typeof window !== "undefined") {
+          setPublishedUrl(`${window.location.origin}/s/${sub}`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+
   // Persist this project + bump the projects index on change
   useEffect(() => {
     if (!hydratedRef.current) return;
