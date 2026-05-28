@@ -1254,3 +1254,97 @@ function CodeView({ html }: { html: string }) {
     </div>
   );
 }
+
+function ConnectorsDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl border border-border bg-card shadow-elegant"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plug className="size-4 text-primary" />
+            <h2 className="font-display font-bold text-lg">Connectors</h2>
+            <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">Preview</span>
+          </div>
+          <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-6">
+          {[1, 2].map((tier) => (
+            <div key={tier}>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">
+                {tier === 1 ? "Essentials" : "Coming soon"}
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {CONNECTORS.filter((c) => c.tier === tier).map((c) => (
+                  <button
+                    key={c.name}
+                    onClick={() => toast(`${c.name} is on the roadmap — request it from your project settings.`)}
+                    className="text-left rounded-2xl border border-border bg-background hover:bg-muted px-4 py-3 flex items-center gap-3 transition"
+                  >
+                    <div className="size-10 rounded-xl bg-muted grid place-items-center text-foreground">
+                      <c.Icon className="size-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">{c.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{c.desc}</p>
+                    </div>
+                    <Plus className="size-4 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const items = [
+    { keys: ["⌘", "K"], label: "Focus chat input" },
+    { keys: ["⌘", "B"], label: "Toggle sidebar" },
+    { keys: ["⌘", "⇧", "P"], label: "Open Connectors" },
+    { keys: ["⌘", "/"], label: "Show this dialog" },
+    { keys: ["Esc"], label: "Stop generation / close dialogs" },
+    { keys: ["/"], label: "Slash command menu in chat" },
+    { keys: ["↵"], label: "Send message" },
+    { keys: ["⇧", "↵"], label: "New line" },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-3xl border border-border bg-card shadow-elegant"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Keyboard className="size-4 text-primary" />
+            <h2 className="font-display font-bold text-lg">Keyboard shortcuts</h2>
+          </div>
+          <button onClick={onClose} className="size-8 grid place-items-center rounded-full hover:bg-muted">
+            <X className="size-4" />
+          </button>
+        </div>
+        <ul className="p-4 space-y-1">
+          {items.map((it) => (
+            <li key={it.label} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/50">
+              <span className="text-sm">{it.label}</span>
+              <span className="flex items-center gap-1">
+                {it.keys.map((k) => (
+                  <kbd key={k} className="px-2 py-1 rounded-md bg-muted border border-border text-[11px] font-mono">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
