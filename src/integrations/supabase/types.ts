@@ -21,10 +21,12 @@ export type Database = {
           domain_verification_token: string | null
           domain_verified: boolean
           domain_verified_at: string | null
+          html_content: string | null
           id: string
           last_deployed_at: string | null
           project_id: string
           subdomain: string | null
+          title: string | null
           updated_at: string
           user_id: string
         }
@@ -34,10 +36,12 @@ export type Database = {
           domain_verification_token?: string | null
           domain_verified?: boolean
           domain_verified_at?: string | null
+          html_content?: string | null
           id?: string
           last_deployed_at?: string | null
           project_id: string
           subdomain?: string | null
+          title?: string | null
           updated_at?: string
           user_id: string
         }
@@ -47,10 +51,12 @@ export type Database = {
           domain_verification_token?: string | null
           domain_verified?: boolean
           domain_verified_at?: string | null
+          html_content?: string | null
           id?: string
           last_deployed_at?: string | null
           project_id?: string
           subdomain?: string | null
+          title?: string | null
           updated_at?: string
           user_id?: string
         }
