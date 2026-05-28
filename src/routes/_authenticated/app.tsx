@@ -392,6 +392,9 @@ function BuilderApp() {
     startPhaseTicker();
 
     const baseHtml = generatedHtml; // edit base — preserved if request fails
+    const isEdit = !!(baseHtml && baseHtml.length > 200);
+    const phaseList = isEdit ? EDIT_PHASE_LABELS : PHASE_LABELS;
+    patchBuild({ mode: isEdit ? "edit" : "build", phase: phaseList[0], phaseIndex: 0, progress: 4 });
 
     const doFetch = () =>
       fetch("/api/generate", {
@@ -406,7 +409,6 @@ function BuilderApp() {
 
     try {
       let resp = await doFetch();
-      // Auto-retry once on 429 with a short backoff
       if (resp.status === 429) {
         patchBuild({ phase: "Rate-limited, retrying" });
         await new Promise((r) => setTimeout(r, 4000));
@@ -420,7 +422,7 @@ function BuilderApp() {
           error: error || "Generation failed",
           progress: 100,
           phase: "Failed",
-          phaseIndex: PHASES.length - 1,
+          phaseIndex: phaseList.length - 1,
         });
         return null;
       }
@@ -428,7 +430,7 @@ function BuilderApp() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let html = "";
-      const TARGET = 22000;
+      const TARGET = isEdit ? Math.max(8000, baseHtml.length) : 22000;
       let lastPreviewLen = 0;
       phaseIdxRef.current = 0;
       while (true) {
@@ -436,15 +438,24 @@ function BuilderApp() {
         if (done) break;
         html += decoder.decode(value, { stream: true });
 
-        const detected = detectPhase(html);
-        phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
-        const phaseIdx = phaseIdxRef.current;
-        const phaseLabel = PHASE_LABELS[phaseIdx];
-        const pct = progressFromPhase(phaseIdx, html.length, TARGET);
-        patchBuild({ progress: pct, phase: phaseLabel, phaseIndex: phaseIdx });
+        if (isEdit) {
+          // Edit-mode phases are time/length-based, not regex-based.
+          const ratio = html.length / TARGET;
+          let pIdx = 0;
+          if (ratio > 0.05) pIdx = 1;
+          if (ratio > 0.35) pIdx = 2;
+          if (ratio > 0.85 || html.toLowerCase().includes("</html>")) pIdx = 3;
+          phaseIdxRef.current = Math.max(phaseIdxRef.current, pIdx);
+          const pct = Math.min(96, Math.round(ratio * 92));
+          patchBuild({ progress: pct, phase: EDIT_PHASE_LABELS[phaseIdxRef.current], phaseIndex: phaseIdxRef.current });
+        } else {
+          const detected = detectPhase(html);
+          phaseIdxRef.current = Math.max(phaseIdxRef.current, detected);
+          const phaseIdx = phaseIdxRef.current;
+          const pct = progressFromPhase(phaseIdx, html.length, TARGET);
+          patchBuild({ progress: pct, phase: PHASE_LABELS[phaseIdx], phaseIndex: phaseIdx });
+        }
 
-        // Live preview: as soon as we have a renderable body, push it.
-        // Throttle to roughly every 600 chars to avoid iframe thrash.
         if (html.length - lastPreviewLen > 600) {
           const live = previewableHtml(html);
           if (live) {
@@ -455,9 +466,39 @@ function BuilderApp() {
       }
       html += decoder.decode();
       stopPhaseTicker();
+
+      // Clarify-mode response: no HTML, just questions.
+      const clarifyMatch = html.match(CLARIFY_MARKER_RE);
+      if (clarifyMatch && !html.toLowerCase().includes("<!doctype")) {
+        setGeneratedHtml(baseHtml);
+        const questions = clarifyMatch[1].split("|").map((q) => q.trim()).filter(Boolean);
+        patchBuild({
+          done: true,
+          progress: 100,
+          phase: "Need a bit more info",
+          phaseIndex: phaseList.length - 1,
+        });
+        // Replace the last assistant message content with the clarify questions
+        setMessages((prev) => {
+          const copy = prev.slice();
+          for (let i = copy.length - 1; i >= 0; i--) {
+            if (copy[i].role === "assistant" && (copy[i] as Extract<Msg, { role: "assistant" }>).build) {
+              copy[i] = {
+                role: "assistant",
+                content: "A couple quick questions so I can build this right:",
+                clarify: questions,
+              };
+              break;
+            }
+          }
+          return copy;
+        });
+        return null;
+      }
+
       patchBuild({
-        phase: "Verifying completion",
-        phaseIndex: PHASES.length - 1,
+        phase: isEdit ? "Reviewing & verifying" : "Verifying completion",
+        phaseIndex: phaseList.length - 1,
         progress: 98,
       });
       const marker = html.match(COMPLETION_MARKER_RE);
@@ -466,10 +507,9 @@ function BuilderApp() {
       const inspected = inspectGeneratedHtml(html);
       html = inspected.cleaned;
       if (status !== "complete" || !inspected.complete) {
-        // Roll back to base so we don't leave a half-rendered preview.
         setGeneratedHtml(baseHtml);
         const error =
-          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I’ll keep the current version unchanged.";
+          "The AI stream stopped before the site was complete, so I did not mark it finished. Please try again and I'll keep the current version unchanged.";
         toast.error("Build was incomplete — kept the previous version");
         patchBuild({
           done: true,
@@ -481,7 +521,6 @@ function BuilderApp() {
         return null;
       }
       setGeneratedHtml(html);
-      // Push a new version
       const v: Version = {
         id: crypto.randomUUID(),
         html,
@@ -492,11 +531,12 @@ function BuilderApp() {
       setActiveVersionId(v.id);
       patchBuild({
         progress: 100,
-        phase: "Finished and verified",
-        phaseIndex: PHASES.length - 1,
+        phase: isEdit ? "Edit applied" : "Finished and verified",
+        phaseIndex: phaseList.length - 1,
         done: true,
       });
       return html;
+
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         toast.error((e as Error).message || "Generation failed");
