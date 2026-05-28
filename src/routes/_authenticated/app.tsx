@@ -1052,11 +1052,10 @@ function BuilderTopBar({
       </Link>
       <div className="size-6 w-px bg-border" />
       <Link to="/" className="flex items-center gap-2">
-        <div className="size-7 rounded-lg bg-gradient-warm grid place-items-center shadow-soft">
-          <Sparkles className="size-3.5 text-ink" strokeWidth={2.5} />
-        </div>
+        <BreezyLogo className="size-8" />
         <span className="font-display font-bold">breezy</span>
       </Link>
+
       <div className="size-6 w-px bg-border" />
       <input
         value={projectName}
@@ -1093,12 +1092,9 @@ function BuilderTopBar({
 }
 
 function Avatar() {
-  return (
-    <div className="shrink-0 size-8 rounded-2xl bg-gradient-warm grid place-items-center shadow-soft">
-      <Sparkles className="size-3.5 text-ink" strokeWidth={2.5} />
-    </div>
-  );
+  return <BreezyLogo className="shrink-0 size-8" />;
 }
+
 
 function renderInline(text: string) {
   const parts: (string | ReactNode)[] = [];
@@ -1339,9 +1335,8 @@ function EmptyPreview({ build }: { build: BuildStatus | null }) {
     <div className="p-12 bg-gradient-hero relative min-h-[480px] grid place-items-center text-center">
       <div className="absolute inset-0 grain" />
       <div className="relative max-w-sm space-y-4">
-        <div className="mx-auto size-14 rounded-2xl bg-gradient-warm grid place-items-center shadow-soft">
-          <Sparkles className="size-6 text-ink" strokeWidth={2.5} />
-        </div>
+        <BreezyLogo className="mx-auto size-16" />
+
         <h2 className="font-display text-2xl font-bold">
           {generating ? `${build?.phase}…` : "Tell Breezy what to build"}
         </h2>
