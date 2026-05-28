@@ -929,6 +929,7 @@ function BuilderApp() {
       </div>
       {connectorsOpen && <ConnectorsDialog onClose={() => setConnectorsOpen(false)} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {domainOpen && <CustomDomainDialog projectId={getProjectId()} onClose={() => setDomainOpen(false)} />}
     </div>
   );
 }
