@@ -433,9 +433,37 @@ function BuilderApp() {
     }
   };
 
+  const clearProject = useCallback(() => {
+    stopPhaseTicker();
+    abortRef.current?.abort();
+    genAbortRef.current?.abort();
+    setMessages(STARTER);
+    setGeneratedHtml("");
+    setVersions([]);
+    setActiveVersionId(null);
+    setShowHistory(false);
+    setProjectName("Untitled project");
+    setBusy(false);
+    toast.success("Started a fresh project");
+  }, []);
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
+
+    // Slash commands
+    if (trimmed.startsWith("/")) {
+      const cmd = SLASH_COMMANDS.find((c) => c.cmd === trimmed.split(/\s+/)[0].toLowerCase());
+      if (cmd) {
+        setSlashOpen(false);
+        if (cmd.prompt === "__CLEAR__") {
+          clearProject();
+          setInput("");
+          return;
+        }
+        return send(cmd.prompt);
+      }
+    }
 
     const userMsg: Msg = { role: "user", content: trimmed };
     const buildMsg: Msg = {
