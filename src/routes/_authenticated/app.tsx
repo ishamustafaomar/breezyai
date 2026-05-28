@@ -45,6 +45,16 @@ import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 
 const PUBLISHED_KEY = "breezy.published.v1";
+const PROJECT_ID_KEY = "breezy.projectId.v1";
+function getProjectId(): string {
+  if (typeof window === "undefined") return "ssr";
+  let id = localStorage.getItem(PROJECT_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(PROJECT_ID_KEY, id);
+  }
+  return id;
+}
 
 const SLASH_COMMANDS = [
   { cmd: "/dark", desc: "Switch to a dark theme", prompt: "Redesign with a dark, premium theme — deep backgrounds, vivid accents." },
@@ -219,6 +229,8 @@ function BuilderApp() {
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [projectId] = useState(() => getProjectId());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -895,6 +907,13 @@ function BuilderApp() {
                 title="Open the site and copy a share link"
               >
                 <Rocket className="size-3.5" /> Publish
+              </button>
+              <button
+                onClick={() => setDomainOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Connect a custom domain"
+              >
+                <Globe className="size-3.5" /> Domain
               </button>
             </div>
           </div>
