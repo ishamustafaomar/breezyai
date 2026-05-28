@@ -197,6 +197,18 @@ const PHASES: { id: string; label: string; match?: RegExp }[] = [
 ];
 const PHASE_LABELS = PHASES.map((p) => p.label);
 
+// Edit-mode shows a different, much shorter phase list — it's a surgical patch, not a rebuild.
+const EDIT_PHASES: { id: string; label: string }[] = [
+  { id: "read", label: "Reading current site" },
+  { id: "locate", label: "Locating the change" },
+  { id: "apply", label: "Applying edits" },
+  { id: "review", label: "Reviewing & verifying" },
+];
+const EDIT_PHASE_LABELS = EDIT_PHASES.map((p) => p.label);
+
+const CLARIFY_MARKER_RE = /<!--BREEZY_CLARIFY:(.*?)-->/;
+
+
 const COMPLETION_MARKER_RE = /<!--BREEZY_GENERATION_STATUS:(.*?):BREEZY_GENERATION_STATUS-->/s;
 
 function inspectGeneratedHtml(html: string) {
