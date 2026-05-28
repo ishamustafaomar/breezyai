@@ -109,6 +109,16 @@ function isPro(): boolean {
 
 
 function fireConfetti() {
+  const duration = 1500;
+  const end = Date.now() + duration;
+  const colors = ["#f97316", "#fb923c", "#fde68a", "#34d399", "#60a5fa"];
+  (function frame() {
+    confetti({ particleCount: 4, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors });
+    confetti({ particleCount: 4, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
+}
+
 export const Route = createFileRoute("/_authenticated/app")({
   validateSearch: (s: Record<string, unknown>) => ({
     id: typeof s.id === "string" && s.id.length > 0 ? s.id : undefined,
