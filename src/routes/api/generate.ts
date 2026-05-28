@@ -179,14 +179,24 @@ export const Route = createFileRoute("/api/generate")({
             : `Generate the complete HTML document for this project based on the conversation above.
 
 Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic accessible HTML, real on-topic copy, 6–9 sections as appropriate. Raw HTML only — no markdown, no fences. End with </html>.`;
+          const finalUserPrompt = isEdit
+            ? `═══ SURGICAL EDIT ═══
+The user is editing an EXISTING site. Below is the current HTML. Apply ONLY the change(s) from the most recent user message above. Preserve everything else exactly — palette, fonts, copy, images, scripts, sections, structure.
 
-          const baseMessages = [
-            { role: "system", content: SYSTEM_PROMPT },
-            ...conversation,
-            { role: "user", content: finalUserPrompt },
-          ];
+CURRENT SITE HTML:
+${htmlForPrompt}
 
-          const callGateway = (msgs: typeof baseMessages) =>
+Rules:
+- Re-output the COMPLETE document with only the requested change applied.
+- DO NOT rewrite, redesign, reorder, or restyle anything the user did not ask about.
+- DO NOT swap images, fonts, or palette unless explicitly asked.
+- Raw HTML only — no markdown, no code fences, no commentary. End with </html>.`
+            : `Generate the complete HTML document for this project based on the conversation above.
+
+Requirements: studio-quality responsive layout, Tailwind CDN in <head>, semantic accessible HTML, real on-topic copy, 6–9 sections as appropriate, working images (picsum.photos seeds or inline SVG only — NO Unsplash). Raw HTML only — no markdown, no fences. End with </html>.
+
+If the request is too vague to attempt, use CLARIFY MODE instead.`;
+
             fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
               headers: {
