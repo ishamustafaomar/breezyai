@@ -245,9 +245,19 @@ function progressFromPhase(phaseIdx: number, htmlLength: number, targetLen: numb
 
 type Version = { id: string; html: string; prompt: string; createdAt: number };
 
-const STORAGE_KEY = "breezy.project.v1";
-
 function BuilderApp() {
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  // If no project id in URL, mint one and replace the URL so this tab is
+  // bound to a single project (and reload preserves it).
+  const [projectId] = useState<string>(() => search.id ?? newProjectId());
+  useEffect(() => {
+    if (!search.id) {
+      navigate({ to: "/app", search: { id: projectId }, replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [messages, setMessages] = useState<Msg[]>(STARTER);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -258,31 +268,33 @@ function BuilderApp() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [projectName, setProjectName] = useState<string>("Untitled project");
+  const [createdAt] = useState<number>(() => Date.now());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
-  const [projectId] = useState(() => getProjectId());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genAbortRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hydratedRef = useRef(false);
+  const createdAtRef = useRef<number>(createdAt);
 
-  // Hydrate from localStorage on mount
+  // Hydrate this project's state from localStorage on mount
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(projectStorageKey(projectId));
       if (!raw) return;
       const data = JSON.parse(raw) as {
         messages?: Msg[];
         versions?: Version[];
         activeVersionId?: string;
         name?: string;
+        createdAt?: number;
       };
       if (data.messages?.length) setMessages(data.messages);
       if (data.versions?.length) {
@@ -295,20 +307,34 @@ function BuilderApp() {
         }
       }
       if (data.name) setProjectName(data.name);
+      if (data.createdAt) createdAtRef.current = data.createdAt;
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [projectId]);
 
-  // Persist on change
+  // Persist this project + bump the projects index on change
   useEffect(() => {
     if (!hydratedRef.current) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, versions, activeVersionId, name: projectName }));
+      localStorage.setItem(
+        projectStorageKey(projectId),
+        JSON.stringify({ messages, versions, activeVersionId, name: projectName, createdAt: createdAtRef.current }),
+      );
+      const meta: ProjectMeta = {
+        id: projectId,
+        name: projectName,
+        createdAt: createdAtRef.current,
+        updatedAt: Date.now(),
+        hasHtml: versions.length > 0,
+      };
+      upsertProjectMeta(meta);
     } catch {
       /* quota: ignore */
     }
-  }, [messages, versions, activeVersionId, projectName]);
+  }, [messages, versions, activeVersionId, projectName, projectId]);
+
+
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
