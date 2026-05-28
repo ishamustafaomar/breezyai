@@ -269,6 +269,36 @@ function BuilderApp() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      } else if (mod && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarOpen((s) => !s);
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setConnectorsOpen((s) => !s);
+      } else if (mod && e.key === "/") {
+        e.preventDefault();
+        setShortcutsOpen((s) => !s);
+      } else if (e.key === "Escape") {
+        setSlashOpen(false);
+        setConnectorsOpen(false);
+        setShortcutsOpen(false);
+        if (busy) {
+          abortRef.current?.abort();
+          genAbortRef.current?.abort();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [busy]);
+
   // Update the last assistant message's build status
   const patchBuild = (patch: Partial<BuildStatus>) => {
     setMessages((prev) => {
