@@ -157,9 +157,22 @@ function DashboardPage() {
                     {p.name}
                     {p.hasHtml && <Sparkles className="size-3.5 text-primary shrink-0" />}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {formatRelative(p.updatedAt)}
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
+                    <span>{formatRelative(p.updatedAt)}</span>
+                    {subdomains[p.id] && (
+                      <a
+                        href={`/s/${subdomains[p.id]}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 text-[10px] font-semibold truncate max-w-[60%]"
+                        title={`/s/${subdomains[p.id]}`}
+                      >
+                        <Globe className="size-2.5" /> {subdomains[p.id]}
+                      </a>
+                    )}
                   </div>
+
                 </div>
               </Link>
             ))}
