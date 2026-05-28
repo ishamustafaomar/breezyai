@@ -873,10 +873,19 @@ function BuilderApp() {
                     const dataUrl =
                       "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
                     await navigator.clipboard.writeText(dataUrl).catch(() => {});
-                    toast.success("Site opened in a new tab — share link copied", {
-                      description:
-                        "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
-                    });
+                    const firstTime = !localStorage.getItem(PUBLISHED_KEY);
+                    if (firstTime) {
+                      localStorage.setItem(PUBLISHED_KEY, String(Date.now()));
+                      fireConfetti();
+                      toast.success("🎉 First publish! Site opened in a new tab", {
+                        description: "Share link copied. For a real custom domain, publish from the Lovable workspace.",
+                      });
+                    } else {
+                      toast.success("Site opened in a new tab — share link copied", {
+                        description:
+                          "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
+                      });
+                    }
                     setTimeout(() => URL.revokeObjectURL(url), 60000);
                   } catch {
                     toast.error("Couldn't publish the preview");
