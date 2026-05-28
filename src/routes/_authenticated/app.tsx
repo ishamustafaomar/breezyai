@@ -45,18 +45,10 @@ import {
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
 import { CustomDomainDialog } from "@/components/custom-domain-dialog";
+import { projectStorageKey, upsertProjectMeta, newProjectId, type ProjectMeta } from "@/lib/projects";
 
 const PUBLISHED_KEY = "breezy.published.v1";
-const PROJECT_ID_KEY = "breezy.projectId.v1";
-function getProjectId(): string {
-  if (typeof window === "undefined") return "ssr";
-  let id = localStorage.getItem(PROJECT_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(PROJECT_ID_KEY, id);
-  }
-  return id;
-}
+
 
 const SLASH_COMMANDS = [
   { cmd: "/dark", desc: "Switch to a dark theme", prompt: "Redesign with a dark, premium theme — deep backgrounds, vivid accents." },
@@ -117,17 +109,10 @@ function isPro(): boolean {
 
 
 function fireConfetti() {
-  const duration = 1500;
-  const end = Date.now() + duration;
-  const colors = ["#f97316", "#fb923c", "#fde68a", "#34d399", "#60a5fa"];
-  (function frame() {
-    confetti({ particleCount: 4, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors });
-    confetti({ particleCount: 4, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors });
-    if (Date.now() < end) requestAnimationFrame(frame);
-  })();
-}
-
 export const Route = createFileRoute("/_authenticated/app")({
+  validateSearch: (s: Record<string, unknown>) => ({
+    id: typeof s.id === "string" && s.id.length > 0 ? s.id : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Breezy Builder — Your AI dev studio" },
@@ -139,6 +124,7 @@ export const Route = createFileRoute("/_authenticated/app")({
   }),
   component: BuilderApp,
 });
+
 
 type BuildStatus = {
   phase: string;
