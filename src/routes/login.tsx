@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 
 function safeRedirect(value: unknown) {
-  if (typeof value !== "string" || !value.startsWith("/")) return "/app";
-  if (value.startsWith("//") || value.startsWith("/~oauth")) return "/app";
+  if (typeof value !== "string" || !value.startsWith("/")) return "/dashboard";
+  if (value.startsWith("//") || value.startsWith("/~oauth")) return "/dashboard";
   return value;
 }
 
