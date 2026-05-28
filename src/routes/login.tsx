@@ -1,10 +1,9 @@
 import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { BreezyLogo } from "@/components/breezy-logo";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
@@ -21,7 +20,6 @@ export const Route = createFileRoute("/login")({
   }),
   beforeLoad: async ({ search }) => {
     if (typeof window === "undefined") return;
-
     const { data } = await supabase.auth.getSession();
     if (data.session) throw redirect({ to: search.redirect });
   },
@@ -42,23 +40,30 @@ function LoginPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const redirectTo = safeRedirect(search.redirect);
-  const getAuthRedirectUrl = () => `${window.location.origin}/login?redirect=${encodeURIComponent(redirectTo)}`;
+  const navigated = useRef(false);
+
+  const goToApp = () => {
+    if (navigated.current) return;
+    navigated.current = true;
+    // Hard navigation guarantees the new session is picked up everywhere
+    // (avoids race where _authenticated bounces back to /login).
+    window.location.replace(redirectTo);
+  };
 
   useEffect(() => {
     let mounted = true;
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate({ to: redirectTo, replace: true });
-    });
-
     supabase.auth.getSession().then(({ data }) => {
-      if (mounted && data.session) navigate({ to: redirectTo, replace: true });
+      if (mounted && data.session) goToApp();
     });
-
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) goToApp();
+    });
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [navigate, redirectTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -66,42 +71,25 @@ function LoginPage() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: getAuthRedirectUrl() },
-        });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        toast.success("Check your email to confirm your account.");
+        if (data.session) {
+          toast.success("Welcome to Breezy!");
+          goToApp();
+        } else {
+          // Shouldn't happen with auto-confirm on, but fall back gracefully.
+          const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+          if (signInErr) throw signInErr;
+          goToApp();
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Welcome back!");
-        navigate({ to: redirectTo, replace: true });
+        goToApp();
       }
     } catch (err) {
       toast.error((err as Error).message || "Something went wrong");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleGoogle = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: getAuthRedirectUrl(),
-      });
-      if (result.error) {
-        toast.error(result.error.message || "Google sign-in failed");
-        setBusy(false);
-        return;
-      }
-      if (result.redirected) return;
-      navigate({ to: redirectTo, replace: true });
-    } catch (err) {
-      toast.error((err as Error).message || "Google sign-in failed");
       setBusy(false);
     }
   };
@@ -115,7 +103,6 @@ function LoginPage() {
           <span className="font-display text-2xl font-bold tracking-tight">breezy</span>
         </Link>
 
-
         <div className="rounded-2xl border border-border bg-card shadow-soft p-6 sm:p-8">
           <h1 className="font-display text-2xl font-bold text-center">
             {mode === "signin" ? "Welcome back" : "Create your account"}
@@ -124,23 +111,7 @@ function LoginPage() {
             {mode === "signin" ? "Sign in to keep building." : "Start vibe-coding in seconds."}
           </p>
 
-          <button
-            type="button"
-            onClick={handleGoogle}
-            disabled={busy}
-            className="mt-6 w-full inline-flex items-center justify-center gap-2 h-10 rounded-lg border border-border bg-background hover:bg-muted transition-colors text-sm font-medium disabled:opacity-50"
-          >
-            <GoogleIcon />
-            Continue with Google
-          </button>
-
-          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="h-px flex-1 bg-border" />
-            or
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <form onSubmit={handleEmail} className="space-y-3">
+          <form onSubmit={handleEmail} className="mt-6 space-y-3">
             <Input
               type="email"
               required
@@ -183,16 +154,5 @@ function LoginPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg className="size-4" viewBox="0 0 24 24" aria-hidden>
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.75h3.57c2.08-1.92 3.28-4.74 3.28-8.07z"/>
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.75c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
-      <path fill="#FBBC05" d="M5.84 14.12A6.6 6.6 0 0 1 5.5 12c0-.74.13-1.45.34-2.12V7.04H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.96l3.66-2.84z"/>
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.04l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
-    </svg>
   );
 }
