@@ -35,7 +35,7 @@ export function SiteHeader() {
                 {user.email}
               </span>
               <Link
-                to="/app"
+                to="/dashboard"
                 className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-ink text-cream hover:bg-ink/90 transition-all hover:scale-[1.03] shadow-soft"
               >
                 Open builder
@@ -58,7 +58,7 @@ export function SiteHeader() {
                 Sign in
               </Link>
               <Link
-                to="/app"
+                to="/dashboard"
                 className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-ink text-cream hover:bg-ink/90 transition-all hover:scale-[1.03] shadow-soft"
               >
                 Start building

@@ -122,7 +122,7 @@ function PricingPage() {
                   ))}
                 </ul>
                 <Link
-                  to="/app"
+                  to="/dashboard"
                   className={`text-center rounded-full px-5 py-3 text-sm font-semibold transition ${
                     p.featured
                       ? "bg-ink text-cream hover:scale-[1.02] shadow-glow"
