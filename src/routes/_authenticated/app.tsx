@@ -1163,9 +1163,10 @@ function BuildCard({ build }: { build: BuildStatus }) {
             {!build.done && (
               <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-60 animate-ping" />
             )}
-            <span
-              className={`relative inline-flex rounded-full size-2 ${build.done ? (build.error ? "bg-rose" : "bg-mint") : "bg-primary"}`}
-            />
+          <span className="text-sm font-semibold transition-all duration-300">
+            {title}
+          </span>
+
           </span>
           <span className="text-sm font-semibold transition-all duration-300">
             {build.done ? (build.error ? "Build failed" : "Site ready") : "Building your site"}
