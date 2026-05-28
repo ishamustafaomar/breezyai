@@ -17,6 +17,7 @@ import { Route as ApiGenerateRouteImport } from './routes/api/generate'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as ApiDomainsVerifyRouteImport } from './routes/api/domains/verify'
+import { Route as ApiDomainsRemoveRouteImport } from './routes/api/domains/remove'
 import { Route as ApiDomainsAddRouteImport } from './routes/api/domains/add'
 
 const PricingRoute = PricingRouteImport.update({
@@ -58,6 +59,11 @@ const ApiDomainsVerifyRoute = ApiDomainsVerifyRouteImport.update({
   path: '/api/domains/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDomainsRemoveRoute = ApiDomainsRemoveRouteImport.update({
+  id: '/api/domains/remove',
+  path: '/api/domains/remove',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDomainsAddRoute = ApiDomainsAddRouteImport.update({
   id: '/api/domains/add',
   path: '/api/domains/add',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRoutesByTo {
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRoutesById {
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/api/chat': typeof ApiChatRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/domains/add': typeof ApiDomainsAddRoute
+  '/api/domains/remove': typeof ApiDomainsRemoveRoute
   '/api/domains/verify': typeof ApiDomainsVerifyRoute
 }
 export interface FileRouteTypes {
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/generate'
     | '/api/domains/add'
+    | '/api/domains/remove'
     | '/api/domains/verify'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/generate'
     | '/api/domains/add'
+    | '/api/domains/remove'
     | '/api/domains/verify'
   id:
     | '__root__'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/generate'
     | '/api/domains/add'
+    | '/api/domains/remove'
     | '/api/domains/verify'
   fileRoutesById: FileRoutesById
 }
@@ -138,6 +150,7 @@ export interface RootRouteChildren {
   ApiChatRoute: typeof ApiChatRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
   ApiDomainsAddRoute: typeof ApiDomainsAddRoute
+  ApiDomainsRemoveRoute: typeof ApiDomainsRemoveRoute
   ApiDomainsVerifyRoute: typeof ApiDomainsVerifyRoute
 }
 
@@ -199,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDomainsVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/domains/remove': {
+      id: '/api/domains/remove'
+      path: '/api/domains/remove'
+      fullPath: '/api/domains/remove'
+      preLoaderRoute: typeof ApiDomainsRemoveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/domains/add': {
       id: '/api/domains/add'
       path: '/api/domains/add'
@@ -229,6 +249,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatRoute: ApiChatRoute,
   ApiGenerateRoute: ApiGenerateRoute,
   ApiDomainsAddRoute: ApiDomainsAddRoute,
+  ApiDomainsRemoveRoute: ApiDomainsRemoveRoute,
   ApiDomainsVerifyRoute: ApiDomainsVerifyRoute,
 }
 export const routeTree = rootRouteImport
