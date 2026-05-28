@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { streamChat } from "@/lib/chat-stream";
 import { Toaster } from "@/components/ui/sonner";
+import { CustomDomainDialog } from "@/components/custom-domain-dialog";
 
 const PUBLISHED_KEY = "breezy.published.v1";
 const PROJECT_ID_KEY = "breezy.projectId.v1";
