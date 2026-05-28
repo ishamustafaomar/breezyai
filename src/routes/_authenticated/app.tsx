@@ -1008,45 +1008,55 @@ function BuilderApp() {
                 <Share2 className="size-3.5" /> Share
               </button>
               <button
-                disabled={!generatedHtml}
+                disabled={!generatedHtml || publishing}
                 onClick={async () => {
+                  if (!generatedHtml) return;
+                  setPublishing(true);
                   try {
-                    const blob = new Blob([generatedHtml], { type: "text/html" });
-                    const url = URL.createObjectURL(blob);
-                    window.open(url, "_blank");
-                    const dataUrl =
-                      "data:text/html;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(generatedHtml)));
-                    await navigator.clipboard.writeText(dataUrl).catch(() => {});
+                    const result = await publishProject({
+                      projectId,
+                      name: projectName || "Untitled",
+                      html: generatedHtml,
+                    });
+                    setPublishedUrl(result.url);
+                    window.open(result.url, "_blank");
+                    await navigator.clipboard.writeText(result.url).catch(() => {});
                     const firstTime = !localStorage.getItem(PUBLISHED_KEY);
                     if (firstTime) {
                       localStorage.setItem(PUBLISHED_KEY, String(Date.now()));
                       fireConfetti();
-                      toast.success("🎉 First publish! Site opened in a new tab", {
-                        description: "Share link copied. For a real custom domain, publish from the Lovable workspace.",
-                      });
-                    } else {
-                      toast.success("Site opened in a new tab — share link copied", {
-                        description:
-                          "Paste anywhere to share. For a real custom domain, publish from the Lovable workspace.",
-                      });
                     }
-                    setTimeout(() => URL.revokeObjectURL(url), 60000);
-                  } catch {
-                    toast.error("Couldn't publish the preview");
+                    toast.success(`Live at /s/${result.subdomain}`, {
+                      description: "Link copied. Anyone can visit this URL.",
+                    });
+                  } catch (e) {
+                    toast.error((e as Error).message || "Couldn't publish");
+                  } finally {
+                    setPublishing(false);
                   }
                 }}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-ink text-cream hover:scale-[1.03] transition disabled:opacity-40"
-                title="Open the site and copy a share link"
+                title="Publish this project to a public subdomain"
               >
-                <Rocket className="size-3.5" /> Publish
+                <Rocket className="size-3.5" /> {publishing ? "Publishing…" : "Publish"}
               </button>
               <button
-                onClick={() => setDomainOpen(true)}
+                onClick={() => {
+                  if (!isPro()) {
+                    toast.error("Custom domains are a Pro feature", {
+                      description: "Upgrade to connect your own domain.",
+                      action: { label: "Upgrade", onClick: () => navigate({ to: "/pricing" }) },
+                    });
+                    return;
+                  }
+                  setDomainOpen(true);
+                }}
                 className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
-                title="Connect a custom domain"
+                title={isPro() ? "Connect a custom domain" : "Pro only — connect a custom domain"}
               >
-                <Globe className="size-3.5" /> Domain
+                <Globe className="size-3.5" /> Domain {!isPro() && <span className="text-[10px] font-bold text-primary ml-0.5">PRO</span>}
               </button>
+
             </div>
           </div>
 
