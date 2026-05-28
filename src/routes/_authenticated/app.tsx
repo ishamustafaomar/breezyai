@@ -1149,8 +1149,12 @@ function MessageContent({ text }: { text: string }) {
 }
 
 function BuildCard({ build }: { build: BuildStatus }) {
-  const steps = PHASES;
+  const steps = build.mode === "edit" ? EDIT_PHASES : PHASES;
   const activeIdx = Math.min(steps.length - 1, build.phaseIndex ?? Math.floor((build.progress / 100) * steps.length));
+  const title = build.done
+    ? build.error ? (build.mode === "edit" ? "Edit failed" : "Build failed") : (build.mode === "edit" ? "Edit applied" : "Site ready")
+    : (build.mode === "edit" ? "Editing your site" : "Building your site");
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4 space-y-3 w-full transition-opacity duration-300">
       <div className="flex items-center justify-between">
